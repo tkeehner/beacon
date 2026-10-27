@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Weather bar: Open-Meteo forecast + reverse geocode (no API keys). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- "Hey Prime": on-device Vosk, only while the screen is on and unlocked. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Call halo: output-mix loudness (Visualizer) while Grok Bot is talking. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Optional: lets a wake word heard over another app open Grok Bot without an extra tap. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Ring = most-used apps (Settings > Usage data access, granted by hand). -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <!-- Long-press > Uninstall hands off to the system's own confirm dialog. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Phone Link: outbound TLS to your own relay server (set at pairing). Off and unpaired until you pair it. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <queries>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
+        <intent><action android:name="android.media.action.STILL_IMAGE_CAMERA" /></intent>
+        <intent><action android:name="android.intent.action.ASSIST" /></intent>
+        <package android:name="ai.x.grok.bot" />
+        <package android:name="com.tyler.matrixsms" />
+    </queries>
+
+    <application
+        android:name=".PrimeApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Prime"
+        tools:targetApi="35">
+
+        <activity
+            android:name=".HomeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:clearTaskOnLaunch="true"
+            android:excludeFromRecents="true"
+            android:resumeWhilePausing="true"
+            android:screenOrientation="portrait"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".TriggerActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Experimental sleeping orb over the lock screen (off by default). Never disables the keyguard; any touch hands off to it. -->
+        <activity
+            android:name=".LockOrbActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:noHistory="true"
+            android:taskAffinity="com.tyler.primelauncher.lockorb"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Prime"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity" />
+
+        <service
+            android:name=".WakeService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".NotifService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+        </service>
+        <!-- Hang-up helper: scoped to ai.x.grok.bot; idle unless the red button armed it (see HangupService). -->
+        <service
+            android:name=".HangupService"
+            android:exported="false"
+            android:label="@string/hangup_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/hangup_service" />
+        </service>
+
+        <!-- Phone Link agent: dials out to your relay server. Soft kill = Disconnect action / QS tile / Settings toggle. -->
+        <service
+            android:name=".phonelink.android.LinkService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Outbound control channel for the owner's own assistant (Prime). No microphone, camera or location." />
+        </service>
+
+        <!-- Prime Control: gestures / UI tree / screenshots. Distinct from HangupService. Off by default (you enable it yourself). -->
+        <service
+            android:name=".phonelink.android.ControlService"
+            android:exported="false"
+            android:label="@string/prime_control_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/prime_control_service" />
+        </service>
+
+        <!-- Quick Settings tile: Prime link on/off. -->
+        <service
+            android:name=".phonelink.android.LinkTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat"
+            android:label="@string/phone_link_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
+        <!-- One-time pairing (paste / QR deep link). -->
+        <activity
+            android:name=".phonelink.android.PairActivity"
+            android:exported="true"
+            android:label="Pair Phone Link"
+            android:theme="@android:style/Theme.DeviceDefault.DayNight">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="phonelink" android:host="pair" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

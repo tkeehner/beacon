@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Prime Control: full-screen gestures + UI tree + screenshots for Phone Link.
+     Distinct from hangup_service (which is scoped to ai.x.grok.bot). Off by default. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowsChanged|typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds|flagIncludeNotImportantViews"
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
+    android:canTakeScreenshot="true"
+    android:description="@string/prime_control_description"
+    android:notificationTimeout="100"
+    android:settingsActivity="com.tyler.primelauncher.phonelink.android.PairActivity" />

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only Grok Bot's windows; window-state/content-change events only; no key filtering, no gestures. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:packageNames="ai.x.grok.bot"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:canRequestFilterKeyEvents="false"
+    android:canPerformGestures="false"
+    android:notificationTimeout="150"
+    android:isAccessibilityTool="false"
+    android:description="@string/hangup_desc"
+    android:summary="@string/hangup_summary" />

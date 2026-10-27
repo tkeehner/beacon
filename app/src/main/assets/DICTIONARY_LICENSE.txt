@@ -1,0 +1,6 @@
+dict/words.bin (gzip TSV): top 40,000 English words with Zipf frequencies from the wordfreq project
+(https://github.com/rspeer/wordfreq). wordfreq data is licensed CC BY-SA 4.0 (attribution: Robyn Speer / wordfreq
+and its sources incl. SUBTLEX, OpenSubtitles, Wikipedia, Google Books, Reddit, Twitter). Personal, non-distributed use.
+
+dict/bigrams.bin (gzip TSV): word-pair counts computed from public-domain Project Gutenberg texts (ids 11, 84, 98, 345, 1342,
+1661, 2591, 2701, 5200, 64317). Public domain.
