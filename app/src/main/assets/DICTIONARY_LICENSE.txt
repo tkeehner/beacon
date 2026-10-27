@@ -1,6 +1,36 @@
-dict/words.bin (gzip TSV): top 40,000 English words with Zipf frequencies from the wordfreq project
-(https://github.com/rspeer/wordfreq). wordfreq data is licensed CC BY-SA 4.0 (attribution: Robyn Speer / wordfreq
-and its sources incl. SUBTLEX, OpenSubtitles, Wikipedia, Google Books, Reddit, Twitter). Personal, non-distributed use.
+Beacon dictionary data: attribution and licenses
+================================================
 
-dict/bigrams.bin (gzip TSV): word-pair counts computed from public-domain Project Gutenberg texts (ids 11, 84, 98, 345, 1342,
-1661, 2591, 2701, 5200, 64317). Public domain.
+dict/words.bin
+--------------
+dict/words.bin (plain-text TSV) contains the top 40,000 English words and their Zipf frequencies,
+adapted from the word-frequency data of wordfreq (https://github.com/rspeer/wordfreq) by Robyn Speer.
+Copyright 2022 Robyn Speer.
+
+Changes made: the English wordlist was truncated to the 40,000 most frequent words and converted to a
+tab-separated table of (word, Zipf frequency x 100 as an integer) for use by Beacon's keyboard.
+
+This adapted data is licensed under the Creative Commons Attribution-ShareAlike 4.0 International
+license (CC BY-SA 4.0): https://creativecommons.org/licenses/by-sa/4.0/
+It is provided without warranty. You may share and adapt it under the same license, with attribution.
+This attribution file must stay with the data.
+
+Credits passed on from wordfreq (as stated in its NOTICE.md and README):
+- wordfreq, Copyright 2022 Robyn Speer. Cite: Robyn Speer. (2022). rspeer/wordfreq: v3.0 (v3.0.2).
+  Zenodo. https://doi.org/10.5281/zenodo.7199437
+- Google Books Ngrams (http://books.google.com/ngrams) and Google Books Syntactic Ngrams.
+- The Leeds Internet Corpus, University of Leeds Centre for Translation Studies
+  (http://corpus.leeds.ac.uk/list.html).
+- Wikipedia, the free encyclopedia (http://www.wikipedia.org).
+- ParaCrawl (https://paracrawl.eu).
+- OPUS OpenSubtitles 2018 (http://opus.nlpl.eu/OpenSubtitles.php); data originates from the
+  OpenSubtitles project (http://www.opensubtitles.org/).
+- SUBTLEX word lists (SUBTLEX-US, -UK, -CH, -DE, -NL) by Marc Brysbaert et al., freely available at
+  http://crr.ugent.be/programs-data/subtitle-frequencies.
+- Additional statistics from the streaming Twitter API, plus Reddit and NewsCrawl/GlobalVoices text,
+  as compiled by the Exquisite Corpus project (https://github.com/LuminosoInsight/exquisite-corpus).
+
+dict/bigrams.bin
+----------------
+dict/bigrams.bin (plain-text TSV): word-pair counts computed from public-domain Project Gutenberg texts
+(ids 11, 84, 98, 345, 1342, 1661, 2591, 2701, 5200, 64317). Public domain.

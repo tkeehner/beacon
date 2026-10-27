@@ -156,10 +156,11 @@ Beacon asks for each permission only when the feature that needs it is turned on
 
 [GPL-3.0](LICENSE). The keyboard module (`emitkb/`) is ported from the GPLv3 Emit project, so the whole app uses the same license.
 
-Third-party assets:
+### Third-party assets and attribution
 
-- Vosk small English model (Apache 2.0, Alpha Cephei).
-- JetBrains Mono and Oxanium fonts (SIL OFL, see `app/src/main/assets/licenses/`).
-- Dictionary data derived from wordfreq (CC BY-SA 4.0, see `app/src/main/assets/DICTIONARY_LICENSE.txt`).
+- **Vosk small US English model** (`app/src/main/assets/model/`, vosk-model-small-en-us-0.15, unmodified): Copyright 2020 Alpha Cephei Inc., Apache License 2.0. See `app/src/main/assets/licenses/Vosk-model-Apache-2.0.txt`.
+- **Dictionary data** (`app/src/main/assets/dict/words.bin`): adapted from [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer (truncated and converted to TSV), licensed [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Full attribution and upstream source credits are in `app/src/main/assets/DICTIONARY_LICENSE.txt`. `dict/bigrams.bin` is computed from public-domain Project Gutenberg texts.
+- **Emoji data** (`app/src/main/assets/emoji.tsv`): generated from Unicode `emoji-test.txt` (Emoji 14.0), Copyright © Unicode, Inc., Unicode License v3. See `app/src/main/assets/licenses/Unicode-License-v3.txt`.
+- **JetBrains Mono and Oxanium fonts**: SIL Open Font License 1.1. See `app/src/main/assets/licenses/`.
 
 "Grok" and other app names mentioned in the code belong to their respective owners. No third-party logos are included.
