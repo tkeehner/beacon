@@ -2,6 +2,7 @@ package com.tyler.primelauncher
 
 import android.app.Activity
 import android.app.SearchManager
+import android.app.StatusBarManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -68,7 +69,7 @@ object CallLaunch {
             m.invoke(sm, Bundle()); log("SearchManager.launchAssist invoked"); true
         }.getOrElse { warn("SearchManager.launchAssist blocked/failed (${it.javaClass.simpleName}: ${it.message})"); false }.let { if (it) return true }
         runCatching {
-            val sbm = ctx.getSystemService(Context.STATUS_BAR_SERVICE) ?: return@runCatching false
+            val sbm = ctx.getSystemService(StatusBarManager::class.java) ?: return@runCatching false
             val m: Method = sbm.javaClass.getMethod("startAssist", Bundle::class.java)
             m.invoke(sbm, Bundle()); log("StatusBarManager.startAssist invoked"); true
         }.getOrElse { warn("StatusBarManager.startAssist blocked/failed (${it.javaClass.simpleName}: ${it.message})"); false }.let { if (it) return true }

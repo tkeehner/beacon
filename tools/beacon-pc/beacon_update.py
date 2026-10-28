@@ -100,7 +100,14 @@ def _line(s, limit=64):
         if len(b) > limit: raise ConnectionError("relay protocol error")
     return bytes(b)
 
+LOOPBACK = ("127.0.0.1", "::1", "localhost")
+def require_loopback_for_plain(host):
+    """--plain (no TLS) is for local tests only: never send the relay token in cleartext to a real host."""
+    if str(host).strip().lower().strip("[]") not in LOOPBACK:
+        raise SystemExit("--plain is only allowed for loopback relay hosts (127.0.0.1, ::1, localhost)")
+
 def connect(cfg, plain=False, timeout=10):
+    if plain: require_loopback_for_plain(cfg["h"])
     raw = socket.create_connection((cfg["h"], cfg["p"]), timeout=timeout)
     raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     if plain: return raw
@@ -167,6 +174,7 @@ def cmd_pair(a):
     cfg = relay_cfg(msms_identity(a.msms_identity))
     if a.relay_host: cfg["h"] = a.relay_host
     if a.relay_port: cfg["p"] = a.relay_port
+    if a.plain: require_loopback_for_plain(cfg["h"])
     key = os.urandom(32); kind, blob = protect(key)
     home = home_dir(a.home)
     name = (a.name or socket.gethostname())[:40]
@@ -236,7 +244,7 @@ def main(argv=None):
     ap.add_argument("--home"); ap.add_argument("--msms-identity")
     sp = ap.add_subparsers(dest="cmd", required=True)
     p = sp.add_parser("pair"); p.add_argument("phone_key"); p.add_argument("--out"); p.add_argument("--name")
-    p.add_argument("--relay-host"); p.add_argument("--relay-port", type=int); p.add_argument("--plain", action="store_true", help=argparse.SUPPRESS)  # tests only
+    p.add_argument("--relay-host"); p.add_argument("--relay-port", type=int); p.add_argument("--plain", action="store_true", help=argparse.SUPPRESS)  # tests only; loopback hosts only
     q = sp.add_parser("push"); q.add_argument("apk"); q.add_argument("--wait", type=float, default=600)
     sp.add_parser("status"); sp.add_parser("unpair")
     a = ap.parse_args(argv)

@@ -61,3 +61,12 @@ prime_hook_import.*
 *.tmp
 *.log
 lint-*.txt
+
+# --- Beacon remote-updater pairing/state files (link key, relay settings) ---
+pair.json
+beacon_update_pair.txt
+beacon_update.pub
+
+# Python bytecode
+__pycache__/
+*.pyc
