@@ -18,16 +18,16 @@ import androidx.compose.ui.unit.dp
 enum class CornerStyle { ROUNDED, CUT }
 
 /** Background animation behind inbox, chats, and the keyboard. */
-enum class RainStyle { KATAKANA, DRIZZLE }
+enum class RainStyle { KATAKANA, DRIZZLE, CITY }
 
 /** Contact tile. Matrix keeps katakana; a later theme can swap the whole tile. */
-enum class AvatarStyle { KATAKANA, GLYPH }
+enum class AvatarStyle { KATAKANA, GLYPH, CALLSIGN }
 
 /** Which bundled face a role uses. Resolved in composition so the theme stays JVM-testable. */
 enum class FontId { MONO, OXANIUM }
 
 /** Pressed-key treatment. MATRIX is today's face; NEON fills the key and pops a glowing glyph. */
-enum class KeyStyle { MATRIX, NEON }
+enum class KeyStyle { MATRIX, NEON, ARMOR }
 
 /**
  * Every color the UI paints, as opaque (or explicitly translucent) ARGB.
@@ -146,6 +146,8 @@ data class EmitTheme(
     val ambientGlitch: Boolean,
     val swatches: List<Long>,
     val chrome: ThemeChrome,
+    /** ODST: radio-comms message headers, VISR corner outlines and the TRANSMISSION SENT squelch on send. */
+    val comms: Boolean = false,
 ) {
     fun shape(radius: Dp): Shape = shape(radius, radius, radius, radius)
 
@@ -253,7 +255,7 @@ val MatrixTheme = EmitTheme(
 )
 
 object Themes {
-    val all: List<EmitTheme> = listOf(MatrixTheme, NeonCityTheme)
+    val all: List<EmitTheme> = listOf(MatrixTheme, NeonCityTheme, OdstTheme)
     fun byId(id: String?): EmitTheme = all.firstOrNull { it.id == id } ?: MatrixTheme
 }
 

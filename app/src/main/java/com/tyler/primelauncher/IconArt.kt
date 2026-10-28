@@ -51,17 +51,18 @@ object IconArt {
     }
 
     /** App tile bitmap (drawer, search, bubbles, tray). size in px. */
-    fun tile(pkg: String, label: String, style: IconStyle, neon: Boolean, sizePx: Int, density: Float): Bitmap {
+    fun tile(pkg: String, label: String, style: IconStyle, neonSkin: Boolean, sizePx: Int, density: Float, odst: Boolean = false): Bitmap {
+        val neon = neonSkin || odst
         val b = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888); val c = Canvas(b); val s = sizePx.toFloat(); val d = density
-        val p = Paint(Paint.ANTI_ALIAS_FLAG); val body = if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt(); val acc = if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
+        val p = Paint(Paint.ANTI_ALIAS_FLAG); val body = if (odst) 0xFFFFB23F.toInt() else if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt(); val acc = if (odst) 0xFF8FB8E0.toInt() else if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
         val shape = Path(); val inset = 1.2f * d
         if (neon) { val k = s * 0.18f; shape.moveTo(inset + k, inset); shape.lineTo(s - inset, inset); shape.lineTo(s - inset, s - inset - k); shape.lineTo(s - inset - k, s - inset); shape.lineTo(inset, s - inset); shape.lineTo(inset, inset + k); shape.close() }
         else shape.addRoundRect(inset, inset, s - inset, s - inset, s * 0.24f, s * 0.24f, Path.Direction.CW)
-        p.color = if (neon) 0xFF100E17.toInt() else 0xFF0B0F0C.toInt(); c.drawPath(shape, p)
+        p.color = if (odst) 0xFF0C1118.toInt() else if (neon) 0xFF100E17.toInt() else 0xFF0B0F0C.toInt(); c.drawPath(shape, p)
         val ic = paths(pkg, style)
         if (!neon && style == IconStyle.PACK && ic != null) { c.save(); c.clipPath(shape); val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x2B00FF41; typeface = Typeface.MONOSPACE; textSize = s * 0.11f }
             var y = s * 0.13f; var row = 0; while (y < s + 4) { c.drawText(if (row % 2 == 0) "10 0 1 01" else "0 1 10 0", -row * s * 0.05f, y, tp); y += s * 0.13f; row++ }; c.restore() }
-        p.style = Paint.Style.STROKE; p.strokeWidth = 1f * d; p.color = if (neon) Color.argb(115, 62, 232, 240) else Color.argb(90, 61, 255, 122); c.drawPath(shape, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 1f * d; p.color = if (odst) Color.argb(115, 255, 178, 63) else if (neon) Color.argb(115, 62, 232, 240) else Color.argb(90, 61, 255, 122); c.drawPath(shape, p)
         if (ic != null) { val k = s * 0.6f / 24f; c.save(); c.translate(s / 2 - 12 * k, s / 2 - 12 * k); c.scale(k, k)
             strokeIcon(c, ic, body, acc, glow = true, neon = neon, strokeMul = if (neon) 0.9f else 1f); c.restore() }
         else { val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = body; textAlign = Paint.Align.CENTER; textSize = s * 0.4f; typeface = if (neon) Typeface.create("sans-serif-condensed", Typeface.BOLD) else Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)

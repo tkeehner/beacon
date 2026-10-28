@@ -28,10 +28,17 @@ import kotlin.math.sqrt
 /** Prime code-sphere, ported from the simulator's Canvas engine. Works in dp; sprites are rendered at px resolution. */
 enum class Mode { IDLE, THINK, SUMMON, LISTEN, TALK }
 
-class Skin(val body: Int, val head: Int, val accent: Int, val glyphs: String, val eye: Int, val neon: Boolean) {
+class Skin(val body: Int, val head: Int, val accent: Int, val glyphs: String, val eye: Int, val neon: Boolean, val odst: Boolean = false) {
+    /** Cut corners + condensed upper-case labels (Neon City and ODST). */
+    val angular get() = neon || odst
     companion object {
         val MATRIX = Skin(0xFF3DFF7A.toInt(), 0xFFE2FFE9.toInt(), 0xFF3DFF7A.toInt(), "01", 0xFF3DFF7A.toInt(), false)
         val NEON = Skin(0xFFF7E733.toInt(), 0xFF3EE8F0.toInt(), 0xFFFF3D81.toInt(), "0123456789ABCDEF", 0xFF3EE8F0.toInt(), true)
+        /** 0.1.17 ODST: amber comms + steel, the orb is the sage-green eyes-only face (see OdstFace). */
+        val ODST = Skin(0xFFFFB23F.toInt(), 0xFFE9EEF5.toInt(), 0xFF8FB8E0.toInt(), "0123456789", 0xFF8FB8E0.toInt(), false, true)
+        fun of(theme: String) = when (theme) { "neon" -> NEON; "odst" -> ODST; else -> MATRIX }
+        /** Orb radius per skin (dp): the ODST face is deliberately small, like the reference. */
+        fun radius(theme: String) = when (theme) { "neon" -> 96f; "odst" -> 96f; else -> 102f }
     }
 }
 
@@ -148,6 +155,8 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
     private val tileK = FloatArray(32); var pace = 1.0; var bright = 1.0; var lid = 1.0; var tired = 0.0
     /** Asleep on lock / screen off; [wake] plays eyes-open + glow surge + kick. */
     val sleep = SleepState()
+    /** 0.1.15 companion body language (StageView sets it every frame; identity = no effect). */
+    val pose = Pose()
     private var glitchT = -9.0; private var glitchDur = 0.0; var nextGlitch = 1.6
     // Glitch bands (y offset, half height, x shift): fixed slots reused, since THINK now glitches several times a second.
     private val bands = Array(4) { DoubleArray(3) }; private var nBands = 0
@@ -178,15 +187,20 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
     private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val mono: Typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
     private val disp: Typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
+    /** 0.1.17 ODST: face renderer, sign-panel flip, VISR night mode (StageView sets [visr]) and the glance dart. */
+    private val odstFace = if (skin.odst) OdstFace() else null; val flip = FaceFlip(); private val fs = OdstFace.State()
+    var visr = false; var glowOn = true; private var pgx = 0.0; private var pgy = 0.0; private var dartK = 0.0
+    /** Tests: the ODST face showing right now. */
+    val odstExpr get() = flip.face
 
     init {
-        val nCols = (64 * quality).roundToInt()
+        val nCols = if (skin.odst) 0 else (64 * quality).roundToInt()
         for (c in 0 until nCols) {
             val chars = IntArray(nLat) { (rnd.next() * nG).toInt() }; val mask = BooleanArray(nLat) { rnd.next() < 0.8 }
             val nh = 1 + (rnd.next() * 2).toInt(); val heads = DoubleArray(nh) { rnd.next() * nLat * 1.4 - nLat * 0.2 }
             cols.add(Col(c.toDouble() / nCols * PI * 2, 7 + rnd.next() * 9, heads, 6 + rnd.next() * 10, chars, mask, rnd.next()))
         }
-        repeat((90 * quality).roundToInt()) {
+        repeat(if (skin.odst) 0 else (90 * quality).roundToInt()) {
             val vert = rnd.next() < 0.6; val a = if (vert) (if (rnd.next() < 0.5) -PI / 2 else PI / 2) + (rnd.next() - 0.5) * 1.3 else rnd.next() * PI * 2
             sparks.add(Spark(a, 1 + (rnd.next() * 3).toInt(), 2 + rnd.next() * 7, rnd.next() * 6.28, (rnd.next() * nG).toInt()))
         }
@@ -249,9 +263,12 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
     fun yawnLevel() = Env.yawnShut(t - yawnT)
     fun surgeLevel() = Env.surge(t - surgeT) * (0.5 + 0.5 * amp)
     /** 0.1.13 lean: the whole sphere drifts and rolls slightly toward where it is looking (dp, dp, degrees). */
-    fun leanX() = gx * r * Bold.LEAN_X * amp
-    fun leanY() = gy * r * Bold.LEAN_Y * amp
-    fun roll() = gx * Bold.ROLL_DEG * amp
+    /** Eye gaze after the pose override ([Pose.gazeK] blends from Prime's own gaze to the pose's). */
+    fun egx() = gx + (pose.gx - gx) * pose.gazeK
+    fun egy() = gy + (pose.gy - gy) * pose.gazeK
+    fun leanX() = egx() * r * Bold.LEAN_X * amp
+    fun leanY() = egy() * r * Bold.LEAN_Y * amp
+    fun roll() = egx() * Bold.ROLL_DEG * amp
     /** Wake up: eyes ramp open, tiredness clears, glow surges and the orb kicks. False if it was already awake. */
     /** 0.1.13: quick wake = a big recoil (1.6x kick) + glow surge; the slow unlock wake pops once as the eyes come open. */
     fun wake(dur: Double = SleepState.WAKE_S): Boolean { if (!sleep.wake(dur)) return false
@@ -259,7 +276,7 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
     private fun kickEnv(): Double { val k = t - kickT; return if (k < 0 || k > 0.7) 0.0 else exp(-k * 6) * sin(k * 24) }
     fun radius(): Float { val fs = t - fidgetT; val ripple = if (curious.fidgetKind == Curiosity.FIDGET_RIPPLE) Bold.FIDGET_RIPPLE * amp * Env.fidget(fs) * sin(fs * 30) else 0.0
         return (r * (1 + 0.045 * hov + Bold.KICK_SWELL * kickAmp * kickEnv() + 0.02 * lvl * (1 - ls) + ripple + Bold.YAWN_SWELL * amp * Env.yawnSwell(t - yawnT) + Bold.PERK_SWELL * perkLevel() + Bold.SURGE_SWELL * surgeLevel())
-            * (1 + Bold.BREATH * sin(t * PI * 2 / 4.2) + Bold.THINK_PULSE * th * sin(t * 9)) * (1 - 0.45 * ease(sp)) * (1 + ls * (0.03 + 0.09 * lvl)) * sleep.breathScale(t)).toFloat() }
+            * (1 + Bold.BREATH * sin(t * PI * 2 / 4.2) + Bold.THINK_PULSE * th * sin(t * 9)) * (1 - 0.45 * ease(sp)) * (1 + ls * (0.03 + 0.09 * lvl)) * sleep.breathScale(t) * pose.scale).toFloat() }
 
     fun step(dt0: Double) {
         val dt = if (dt0.isNaN()) 0.0 else dt0.coerceIn(0.0, 0.1)
@@ -296,9 +313,11 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
         }
         if (t - touchT > 2.6 && !curious.busy) { tgx *= max(0.0, 1 - dt * 1.5); tgy *= max(0.0, 1 - dt * 1.5) }
         val kk = min(1.0, dt * curious.rate); gx += (tgx - gx) * kk; gy += (tgy - gy) * kk
+        if (skin.odst && dt > 0) { val ex = egx(); val ey = egy(); val v = hypot(ex - pgx, ey - pgy) / dt; pgx = ex; pgy = ey
+            dartK = max(dartK * exp(-dt * 10), clamp((v - 0.25) * 0.5, 0.0, 1.0)) } // a quick glance squashes the eyes (mockup idleLife)
         val fid = if (curious.fidgetKind == Curiosity.FIDGET_RAIN) Bold.FIDGET_RAIN * amp * Env.fidget(t - fidgetT) else 0.0
-        val pc = sleep.pace(pace); val speedMul = pc * (1 + th * (Bold.THINK_RAIN + Bold.THINK_RAIN_WOBBLE * sin(t * 3.1)) + sp * Bold.SUMMON_RAIN + ls * (Bold.LISTEN_RAIN + Bold.LISTEN_RAIN_LVL * lvl) + fid)
-        rot += dt * (0.2 + Bold.THINK_SPIN * th) * pc
+        val pc = sleep.pace(pace); val speedMul = pc * (1 + th * (Bold.THINK_RAIN + Bold.THINK_RAIN_WOBBLE * sin(t * 3.1)) + sp * Bold.SUMMON_RAIN + ls * (Bold.LISTEN_RAIN + Bold.LISTEN_RAIN_LVL * lvl) + fid) * pose.rainMul
+        rot += dt * (0.2 * pose.spin + Bold.THINK_SPIN * th) * pc
         for (c in cols) for (h in c.heads.indices) {
             val before = floor(c.heads[h]).toInt(); c.heads[h] += dt * c.speed * speedMul; val after = floor(c.heads[h]).toInt()
             for (i in max(before + 1, 0)..min(after, nLat - 1)) if (rnd.next() < 0.5) c.chars[i] = (rnd.next() * nG).toInt()
@@ -324,9 +343,14 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
     }
 
     fun draw(cv: Canvas) {
+        if (skin.odst) { drawOdst(cv); return }
         val R = radius().toDouble(); val n = nLat; val gl = glitching(); val K = skin
         // 0.1.13 lean: one canvas transform for the whole sphere (no per-glyph cost); the app ring below stays put.
-        cv.save(); cv.translate(leanX().toFloat(), leanY().toFloat()); cv.rotate(roll().toFloat(), cx, cy)
+        val ps = pose; val pk = (r / 92.0).toFloat()
+        cv.save(); cv.translate(leanX().toFloat() + (ps.dx * pk).toFloat(), leanY().toFloat() + (ps.dy * pk).toFloat())
+        if (abs(ps.sx - 1) > 1e-3 || abs(ps.sy - 1) > 1e-3) { val ad = Math.toDegrees(ps.axis).toFloat(); cv.rotate(ad, cx, cy); cv.scale(ps.sx.toFloat(), ps.sy.toFloat(), cx, cy); cv.rotate(-ad, cx, cy) }
+        cv.rotate(roll().toFloat() + ps.roll.toFloat(), cx, cy)
+        val gx = egx(); val gy = egy()
         val scatter = sin(PI * min(1.0, sp * 1.15)) * r * 0.55
         p.blendMode = BlendMode.PLUS
         p.shader = bodyGlow; p.alpha = 255; val rb = R.toFloat().coerceAtLeast(1f)
@@ -334,9 +358,9 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
         val latMax = 1.42; val swp = t - sweepT; val sw = if (swp >= 0 && swp < 1.4) latMax - swp / 1.4 * 2 * latMax else -9.0
         val fl = if (flick >= 0 && t - flickT < 0.35) cols[flick] else null
         // Asleep: the body glyphs dim and breathe too (not just the eyes), and near-invisible cells are skipped.
-        val se = sleep.e; val bodyK = 1 - se * (0.6 - 0.3 * (0.5 + 0.5 * sin(t * 2 * PI / SleepState.BREATH_S))); val cut = 0.03 + 0.04 * se
+        val se = sleep.e; val bodyK = (1 - se * (0.6 - 0.3 * (0.5 + 0.5 * sin(t * 2 * PI / SleepState.BREATH_S)))) * ps.bodyK; val cut = 0.03 + 0.04 * se; val flash = ps.flash
         for (c in cols) {
-            val phi = c.lon + rot; val cp = cos(phi); if (cp < 0.03) continue; val sphi = sin(phi); val wsc = 0.3 + 0.7 * cp
+            val phi = c.lon + rot + ps.rotOff; val cp = cos(phi); if (cp < 0.03) continue; val sphi = sin(phi); val wsc = 0.3 + 0.7 * cp
             for (i in 0 until n) {
                 if (!c.mask[i]) continue
                 val th2 = latTh[i]; val ct = latCos[i]
@@ -344,6 +368,7 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
                 for (h in c.heads) { val d = h - i; if (d >= 0 && d < c.tail) { val v = 1 - d / c.tail * 0.82; if (v > b) b = v; if (d < 1) head = true } }
                 if (sw > -9) { val dd = abs(th2 - sw); if (dd < 0.16) b = max(b, 1 - dd / 0.16) }
                 if (fl != null && c === fl) b = max(b, 0.95 * (1 - (t - flickT) / 0.35))
+                if (flash > 0.01) b = max(b, flash * (0.45 + 0.55 * (((c.chars[i] * 7 + i * 3) % 11) / 10.0)))
                 val z = ct * cp; val fr = 1 - z
                 var a = b * (0.62 + 0.75 * fr * fr) * latEdge[i] * bodyK
                 var x = cx + R * ct * sphi; var y = cy - R * latSin[i]
@@ -357,40 +382,69 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
             }
         }
         // Rim glow uses a 0.1-step surge so a surge reuses a handful of cached gradients instead of minting new ones.
-        val sg = surgeLevel(); val sgq = floor(min(1.0, sg * Bold.SURGE_RIM) * 10) / 10; val thq = floor(th * 10) / 10
-        val open = sleep.lid(lid) * (1 + 0.15 * hov + Bold.PERK_EYES * perkLevel()) * (1 - blink) * (1 - 0.55 * th) * (1 - 0.6 * sp) * (1 + ls * (0.18 + 0.35 * lvl))
-        val pulse = sleep.bright(bright, t) * (0.8 + 0.25 * hov + 0.15 * lvl + Bold.GLOW_WOBBLE * sin(t * 2.2) + th * (Bold.THINK_GLOW + Bold.THINK_FLASH * sin(t * 10)) + ls * (0.15 + 0.5 * lvl) + Bold.SURGE_GLOW * sg + Bold.PERK_GLOW * perkLevel())
+        val sg = surgeLevel(); val sgq = floor(min(1.0, sg * Bold.SURGE_RIM + ps.rim * 0.5) * 10) / 10; val thq = floor(th * 10) / 10
+        val open = sleep.lid(lid) * (1 + 0.15 * hov + Bold.PERK_EYES * perkLevel()) * (1 - blink) * (1 - 0.55 * th) * (1 - 0.6 * sp) * (1 + ls * (0.18 + 0.35 * lvl)) * ps.open.coerceAtLeast(0.0) * (1 - ps.blink.coerceIn(0.0, 1.0))
+        val pulse = sleep.bright(bright, t) * (0.8 + 0.25 * hov + 0.15 * lvl + Bold.GLOW_WOBBLE * sin(t * 2.2) + th * (Bold.THINK_GLOW + Bold.THINK_FLASH * sin(t * 10)) + ls * (0.15 + 0.5 * lvl) + Bold.SURGE_GLOW * sg + Bold.PERK_GLOW * perkLevel()) * ps.glow
         if (!K.neon) {
-            for (e in EYES) {
-                val ecx = cx + (e[0] + gx) * R; val ecy = cy + (e[1] + gy) * R; val rx = e[2] * R; val ry = max(1.2, e[3] * R * open); val rotE = e[4]
+            val hap = ps.happy.coerceIn(0.0, 1.0); val spi = ps.spiral.coerceIn(0.0, 1.0); val shape = max(hap, spi)
+            for ((ei, e) in EYES.withIndex()) {
+                val wk = if (ei == 1) (1 - ps.wink.coerceIn(0.0, 1.0)) else 1.0
+                val ecx = cx + (e[0] + gx) * R; val ecy = cy + (e[1] + gy) * R; val rx = e[2] * R; val ry0 = e[3] * R; val ry = max(1.2, ry0 * open * wk); val rotE = e[4]
                 cv.save(); cv.translate(ecx.toFloat(), ecy.toFloat()); cv.rotate(Math.toDegrees(rotE).toFloat())
-                cv.save(); cv.scale(1f, (ry / rx).toFloat())
+                cv.save(); cv.scale(1f, (max(1.2, ry * (1 - shape) + ry0 * 0.5 * shape) / rx).toFloat())
                 val er = (rx * 1.25).toFloat().coerceAtLeast(1f); p.shader = eyeGlow; p.alpha = (clamp(0.55 * pulse, 0.0, 1.0) * 255).toInt()
                 cv.scale(er, er); cv.drawCircle(0f, 0f, 1f, p); p.shader = null; p.alpha = 255; cv.restore()
-                val st = gs * 0.78; val sw2 = gs * 1.5; var yy = -ry
-                while (yy <= ry) { var xx = -rx
-                    while (xx <= rx) { val ee = xx * xx / (rx * rx) + yy * yy / (ry * ry)
-                        if (ee <= 1) { val hsh = sin(xx * 12.9898 + yy * 78.233 + floor(t * 6 + xx) * 3.1) * 43758.5; val ch = if (hsh - floor(hsh) < 0.5) 0 else 1
-                            cv.save(); cv.translate(xx.toFloat(), yy.toFloat()); cv.rotate(-Math.toDegrees(rotE).toFloat()); blit(cv, g(1, ch), 0.0, 0.0, sw2, sw2, (0.55 + 0.45 * (1 - ee)) * pulse); cv.restore() }
-                        xx += st * 0.8 }
-                    yy += st }
+                val st = gs * 0.78; val sw2 = gs * 1.5
+                if (shape < 0.02) { var yy = -ry
+                    while (yy <= ry) { var xx = -rx
+                        while (xx <= rx) { val ee = xx * xx / (rx * rx) + yy * yy / (ry * ry)
+                            if (ee <= 1) { val hsh = sin(xx * 12.9898 + yy * 78.233 + floor(t * 6 + xx) * 3.1) * 43758.5; val ch = if (hsh - floor(hsh) < 0.5) 0 else 1
+                                cv.save(); cv.translate(xx.toFloat(), yy.toFloat()); cv.rotate(-Math.toDegrees(rotE).toFloat()); blit(cv, g(1, ch), 0.0, 0.0, sw2, sw2, (0.55 + 0.45 * (1 - ee)) * pulse); cv.restore() }
+                            xx += st * 0.8 }
+                        yy += st }
+                } else {
+                    // 0.1.15: happy ^^ arcs and dizzy spirals are drawn with the same glyph cells, cross-faded with the open eye.
+                    val box = max(ry, ry0); var yy = -box; val band = gs * 1.25
+                    while (yy <= box) { var xx = -rx
+                        while (xx <= rx) { var a = 0.0
+                            val ee = xx * xx / (rx * rx) + yy * yy / (ry * ry); if (ee <= 1) a += (0.55 + 0.45 * (1 - ee)) * (1 - shape)
+                            if (hap > 0.01) { val q = xx / rx; val arcY = -0.4 * ry0 + 0.8 * ry0 * q * q; val d = abs(yy - arcY); if (d < band) { val f = d / band; a += hap * (1.15 - f * f) * (1 - 0.25 * q * q) } }
+                            if (spi > 0.01) { val yn = yy * rx / ry0; val rr = hypot(xx, yn) / rx; if (rr < 1) { val ang = kotlin.math.atan2(yn, xx); var f = (rr * 2.2 - (ang + t * 7) / (2 * PI)) % 1.0; if (f < 0) f += 1.0
+                                val dd = min(f, 1 - f); if (dd < 0.26) a += spi * (1.15 - dd / 0.26) } }
+                            if (a > 0.03) { val hsh = sin(xx * 12.9898 + yy * 78.233 + floor(t * 6 + xx) * 3.1) * 43758.5; val ch = if (hsh - floor(hsh) < 0.5) 0 else 1
+                                cv.save(); cv.translate(xx.toFloat(), yy.toFloat()); cv.rotate(-Math.toDegrees(rotE).toFloat()); blit(cv, g(1, ch), 0.0, 0.0, sw2, sw2, min(1.0, a) * pulse); cv.restore() }
+                            xx += st * 0.8 }
+                        yy += st }
+                }
                 cv.restore()
             }
         } else {
             val thinkMag = th > 0.2 && sin(t * 7) > 0
-            for (e in VIS) {
+            val hap = ps.happy.coerceIn(0.0, 1.0); val spi = ps.spiral.coerceIn(0.0, 1.0); val shape = max(hap, spi)
+            for ((ei, e) in VIS.withIndex()) {
+                val wk = if (ei == 1) (1 - ps.wink.coerceIn(0.0, 1.0)) else 1.0
                 val slope = e[2]; val ecx = cx + (e[0] + gx) * R + (if (gl) bandShift(cy + e[1] * R) else 0.0); val ecy = cy + (e[1] + gy) * R
-                val rx = 0.19 * R; val ry = max(0.8, 0.075 * R * open * (1 + 0.15 * th * sin(t * 12))); val c = if (thinkMag) K.accent else K.eye
-                cv.save(); cv.translate(ecx.toFloat(), ecy.toFloat()); path.reset()
-                path.moveTo((-rx).toFloat(), (-ry + slope * -rx).toFloat()); path.lineTo((rx * 0.85).toFloat(), (-ry + slope * rx).toFloat()); path.lineTo(rx.toFloat(), (ry + slope * rx).toFloat()); path.lineTo((-rx * 0.85).toFloat(), (ry + slope * -rx).toFloat()); path.close()
-                for (si in 0 until 3) { sp2.strokeWidth = (gs * strokes[si * 2]).toFloat(); sp2.color = withA(c, strokes[si * 2 + 1] * pulse); cv.drawPath(path, sp2) }
-                p.style = Paint.Style.FILL; p.color = withA(c, 0.375 * pulse); cv.drawPath(path, p); p.color = Color.BLACK
-                sp2.strokeWidth = 1f; sp2.color = withA(c, 0.81); cv.drawPath(path, sp2)
-                val st = gs * 0.72; val sw2 = gs * 1.3; var xx = -rx * 0.9
-                while (xx <= rx * 0.9) { var yy = -ry
-                    while (yy <= ry) { val hsh = sin(xx * 12.9898 + yy * 78.233 + floor(t * 8 + xx) * 3.1) * 43758.5; val ch = ((hsh - floor(hsh)) * nG).toInt()
-                        blit(cv, g(if (thinkMag) 2 else 1, ch), xx, yy + slope * xx, sw2, sw2, 0.9 * pulse); yy += st }
-                    xx += st * 0.75 }
+                val rx = 0.19 * R; val ry = max(0.8, 0.075 * R * open * wk * (1 + 0.15 * th * sin(t * 12))); val c = if (thinkMag) K.accent else K.eye
+                val vp = pulse * (1 - shape)
+                cv.save(); cv.translate(ecx.toFloat(), ecy.toFloat())
+                if (vp > 0.01) { path.reset()
+                    path.moveTo((-rx).toFloat(), (-ry + slope * -rx).toFloat()); path.lineTo((rx * 0.85).toFloat(), (-ry + slope * rx).toFloat()); path.lineTo(rx.toFloat(), (ry + slope * rx).toFloat()); path.lineTo((-rx * 0.85).toFloat(), (ry + slope * -rx).toFloat()); path.close()
+                    for (si in 0 until 3) { sp2.strokeWidth = (gs * strokes[si * 2]).toFloat(); sp2.color = withA(c, strokes[si * 2 + 1] * vp); cv.drawPath(path, sp2) }
+                    p.style = Paint.Style.FILL; p.color = withA(c, 0.375 * vp); cv.drawPath(path, p); p.color = Color.BLACK
+                    sp2.strokeWidth = 1f; sp2.color = withA(c, 0.81 * (1 - shape)); cv.drawPath(path, sp2)
+                    val st = gs * 0.72; val sw2 = gs * 1.3; var xx = -rx * 0.9
+                    while (xx <= rx * 0.9) { var yy = -ry
+                        while (yy <= ry) { val hsh = sin(xx * 12.9898 + yy * 78.233 + floor(t * 8 + xx) * 3.1) * 43758.5; val ch = ((hsh - floor(hsh)) * nG).toInt()
+                            blit(cv, g(if (thinkMag) 2 else 1, ch), xx, yy + slope * xx, sw2, sw2, 0.9 * vp); yy += st }
+                        xx += st * 0.75 }
+                }
+                // 0.1.15: happy = a glowing ^ chevron; dizzy = a spinning spiral, both stroked like the visor.
+                if (shape > 0.01) { path.reset()
+                    if (hap >= spi) { val h = 0.075 * R * 1.6; path.moveTo((-rx * 0.85).toFloat(), (h * 0.55).toFloat()); path.lineTo(0f, (-h * 0.75).toFloat()); path.lineTo((rx * 0.85).toFloat(), (h * 0.55).toFloat()) }
+                    else { val n = 40; for (j in 0..n) { val u = j.toDouble() / n; val ang = u * 4 * PI + t * 7; val rr = u * rx * 0.75; val x = (cos(ang) * rr).toFloat(); val y = (sin(ang) * rr * 0.75).toFloat(); if (j == 0) path.moveTo(x, y) else path.lineTo(x, y) } }
+                    for (si in 0 until 3) { sp2.strokeWidth = (gs * strokes[si * 2] * 0.8).toFloat(); sp2.color = withA(c, min(1.0, strokes[si * 2 + 1] * 2.2) * pulse * shape); cv.drawPath(path, sp2) }
+                    sp2.strokeWidth = 2f; sp2.color = withA(c, 0.9 * shape); cv.drawPath(path, sp2)
+                }
                 cv.restore()
             }
         }
@@ -405,7 +459,14 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
                 blit(cv, g(tier, s.ch + j), cx + dx * rr, cy + dy * rr, ss, ss, f * (1 - j / (s.len + 0.5))) }
         }
         val rg = ring
-        if (sp > 0 && rg != null) {
+        if (sp > 0 && rg != null) drawFlyers(cv, rg, R)
+        if (gl) for (bi in 0 until nBands) { val b = bands[bi]; p.color = withA(if (b[2] > 0) K.eye else K.accent, 0.5 * 0.35); cv.drawRect((cx - R * 1.3 + b[2]).toFloat(), (cy + b[0] - 0.75).toFloat(), (cx + R * 1.3 + b[2]).toFloat(), (cy + b[0] + 0.75).toFloat(), p) }
+        p.blendMode = null; p.alpha = 255
+        cv.restore() // end lean
+        if (rg != null) drawTiles(cv, rg)
+    }
+
+    private fun drawFlyers(cv: Canvas, rg: Ring, R: Double) { val K = skin
             if (rg.orbits.isNotEmpty()) { op.color = withA(K.eye, 0.9 * smooth(0.3, 0.9, sp) * 0.5)
                 for (o in rg.orbits) { cv.save(); cv.translate(cx, cy); cv.scale(1f, rg.fy); cv.rotate(o[2]); cv.drawOval(-o[0], -o[1], o[0], o[1], op); cv.restore() } }
             val fs = gs * 1.7
@@ -417,16 +478,31 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
                 val hotF = f.tile == hot; val tier = if (hotF || pp < 1) 1 else if (K.neon && f.ch % 5 == 0) 2 else 0
                 blit(cv, g(tier, f.ch + floor(t * 4 + f.ph).toInt()), x, y, fs, fs, clamp((0.5 + 0.5 * sin(t * 7 + f.ph)) * 0.6 + 0.4, 0.0, 1.0) * (if (hotF) 1.0 else 0.85))
             }
-        }
-        if (gl) for (bi in 0 until nBands) { val b = bands[bi]; p.color = withA(if (b[2] > 0) K.eye else K.accent, 0.5 * 0.35); cv.drawRect((cx - R * 1.3 + b[2]).toFloat(), (cy + b[0] - 0.75).toFloat(), (cx + R * 1.3 + b[2]).toFloat(), (cy + b[0] + 0.75).toFloat(), p) }
-        p.blendMode = null; p.alpha = 255
-        cv.restore() // end lean
-        if (rg != null) drawTiles(cv, rg)
+    }
+
+    /** ODST: HUD (stays put), then the face with the shared lean / squash / roll body language, then the ring. */
+    private fun drawOdst(cv: Canvas) {
+        val face = odstFace ?: return; val R = radius(); val ps = pose; val pk = (r / 92.0).toFloat()
+        val hudA = 0.9 * ps.hudA * (1 - smooth(0.0, 0.5, sp)) * (1 - 0.8 * sleep.e)
+        face.glowOn = glowOn
+        face.hud(cv, cx, cy, r, cx * 2, t, hudA, visr, ps.tag1 ?: (if (visr) "VISR\u00B7ON" else null), ps.tag2 ?: (if (visr) "LOW LIGHT" else null), 1 + 3 * th, ls * (0.3 + 0.7 * lvl))
+        cv.save(); cv.translate(leanX().toFloat() + (ps.dx * pk).toFloat(), leanY().toFloat() + (ps.dy * pk).toFloat())
+        if (abs(ps.sx - 1) > 1e-3 || abs(ps.sy - 1) > 1e-3) { val ad = Math.toDegrees(ps.axis).toFloat(); cv.rotate(ad, cx, cy); cv.scale(ps.sx.toFloat(), ps.sy.toFloat(), cx, cy); cv.rotate(-ad, cx, cy) }
+        cv.rotate(roll().toFloat() + ps.roll.toFloat(), cx, cy)
+        val open = sleep.lid(lid) * (1 + 0.15 * hov + Bold.PERK_EYES * perkLevel()) * (1 - 0.55 * th) * (1 - 0.6 * sp) * (1 + ls * (0.18 + 0.35 * lvl)) * ps.open.coerceAtLeast(0.0)
+        fs.gx = clamp(egx() / 0.2, -1.4, 1.4); fs.gy = clamp(egy() / 0.2, -1.4, 1.4); fs.blink = max(blink, ps.blink); fs.dart = dartK
+        fs.lid = max(ps.lid, clamp((1 - open) * 0.9, 0.0, 0.85)); fs.wide = max(ps.wide, clamp((open - 1) * 2, 0.0, 1.0))
+        fs.glow = ps.glow * clamp(sleep.bright(bright, t) * (1 + 0.25 * hov + 0.3 * ls * lvl + Bold.SURGE_GLOW * surgeLevel()), 0.3, 2.2) + ps.rim * 0.4
+        fs.vergil = ps.vergil; fs.visr = visr; fs.showMarks = !still || sleep.e > 0.5
+        flip.step(t, Expr.target(ps, sleep.e)); face.draw(cv, cx, cy, R, t, flip.face, flip.sx, fs, ps.faceA)
+        cv.restore()
+        val rg = ring
+        if (sp > 0 && rg != null) { p.blendMode = BlendMode.PLUS; drawFlyers(cv, rg, R.toDouble()); p.blendMode = null; p.alpha = 255; drawTiles(cv, rg) }
     }
 
     private fun tilePath(x: Float, y: Float, h: Float) {
         path.reset()
-        if (skin.neon) { val c = min(10f, h / 2); path.moveTo(x - h + c, y - h); path.lineTo(x + h, y - h); path.lineTo(x + h, y + h - c); path.lineTo(x + h - c, y + h); path.lineTo(x - h, y + h); path.lineTo(x - h, y - h + c); path.close() }
+        if (skin.angular) { val c = min(10f, h / 2); path.moveTo(x - h + c, y - h); path.lineTo(x + h, y - h); path.lineTo(x + h, y + h - c); path.lineTo(x + h - c, y + h); path.lineTo(x - h, y + h); path.lineTo(x - h, y - h + c); path.close() }
         else path.addRoundRect(x - h, y - h, x + h, y + h, 14f, 14f, Path.Direction.CW)
     }
     private fun drawTiles(cv: Canvas, rg: Ring) {
@@ -441,20 +517,20 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
             val sc = ((if (still) 1.0 else backOut(kk)) * (1 + 0.14 * tileK[min(i, tileK.size - 1)] + if (isHot) 0.03 * sin(t * 10) else 0.0)).toFloat()
             cv.save(); cv.scale(sc, sc, x, y); tilePath(x, y, h)
             fp.style = Paint.Style.FILL; fp.alpha = 255
-            if (isHot) { fp.color = K.body; fp.setShadowLayer(26f, 0f, 0f, K.body) } else { fp.clearShadowLayer(); fp.color = if (K.neon) 0xD9100E17.toInt() else 0xD10B0F0C.toInt() }
+            if (isHot) { fp.color = K.body; fp.setShadowLayer(26f, 0f, 0f, K.body) } else { fp.clearShadowLayer(); fp.color = if (K.odst) 0xD90C1118.toInt() else if (K.neon) 0xD9100E17.toInt() else 0xD10B0F0C.toInt() }
             fp.alpha = (ta * Color.alpha(fp.color)).toInt(); cv.drawPath(path, fp); fp.clearShadowLayer()
             if (!isHot) { fp.style = Paint.Style.STROKE; fp.strokeWidth = 1f; fp.color = withA(if (K.neon) K.eye else K.body, 0.35 * ta); cv.drawPath(path, fp) }
-            val tile = rg.tiles[i]; val ink = if (isHot) (if (K.neon) 0xFF0B0A00.toInt() else 0xFF001A08.toInt()) else if (K.neon) K.eye else K.body
-            val ac = if (isHot) ink else if (K.neon) K.accent else K.head
+            val tile = rg.tiles[i]; val ink = if (isHot) (if (K.odst) 0xFF0A0D10.toInt() else if (K.neon) 0xFF0B0A00.toInt() else 0xFF001A08.toInt()) else if (K.neon) K.eye else K.body
+            val ac = if (isHot) ink else if (K.neon || K.odst) K.accent else K.head
             val ic = tile.icon
             if (ic != null) { val k = sl.s * 0.56f / 24f; cv.save(); cv.translate(x - 12 * k, y - 12 * k); cv.scale(k, k)
-                IconArt.strokeIcon(cv, ic, ink, ac, glow = !isHot, neon = K.neon, alpha = ta.toFloat()); cv.restore() }
+                IconArt.strokeIcon(cv, ic, ink, ac, glow = !isHot, neon = K.angular, alpha = ta.toFloat()); cv.restore() }
             else { tp.typeface = mono; tp.textSize = sl.s * (if (tile.letter.length > 1) 0.32f else 0.42f); tp.color = withA(ink, ta); cv.drawText(tile.letter, x, y - (tp.descent() + tp.ascent()) / 2, tp) }
             if (tile.pinned) { fp.style = Paint.Style.FILL; fp.color = withA(if (K.neon) K.accent else K.head, ta); cv.drawCircle(x + h - 3, y - h + 3, 3.2f, fp) }
             val raw = if (tile.name.length > 11) tile.name.take(10) + "\u2026" else tile.name
-            tp.typeface = if (K.neon) disp else mono; tp.textSize = if (K.neon) 10f else 10.5f; tp.isFakeBoldText = isHot
-            tp.color = withA(if (isHot) K.body else if (K.neon) 0xFFEEF2F3.toInt() else 0xFFB8F5C8.toInt(), ta); tp.setShadowLayer(4f, 0f, 0f, Color.BLACK)
-            cv.drawText(if (K.neon) raw.uppercase() else raw, x, y + h + 6 - tp.ascent(), tp); tp.clearShadowLayer(); tp.isFakeBoldText = false
+            tp.typeface = if (K.angular) disp else mono; tp.textSize = if (K.angular) 10f else 10.5f; tp.isFakeBoldText = isHot
+            tp.color = withA(if (isHot) K.body else if (K.odst) 0xFFE9EEF5.toInt() else if (K.neon) 0xFFEEF2F3.toInt() else 0xFFB8F5C8.toInt(), ta); tp.setShadowLayer(4f, 0f, 0f, Color.BLACK)
+            cv.drawText(if (K.angular) raw.uppercase() else raw, x, y + h + 6 - tp.ascent(), tp); tp.clearShadowLayer(); tp.isFakeBoldText = false
             cv.restore()
         }
     }

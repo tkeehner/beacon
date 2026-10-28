@@ -13,15 +13,17 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /** Theme palette + tiny view helpers (all views are built in code). */
-class Pal(val neon: Boolean) {
-    val bg = if (neon) 0xFF07060B.toInt() else 0xFF000000.toInt()
-    val s1 = if (neon) 0xFF100E17.toInt() else 0xFF0B0F0C.toInt()
-    val p = if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt()
-    val p2 = if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
-    val hi = if (neon) 0xFFF7E733.toInt() else 0xFF3DFF7A.toInt()
-    val body = if (neon) 0xFFEEF2F3.toInt() else 0xFFB8F5C8.toInt()
-    val dim = if (neon) 0xFF8A8D9E.toInt() else 0xFF5E8F6B.toInt()
-    val line = if (neon) 0x553EE8F0 else 0x443DFF7A
+/** Home palette. 0.1.17: [odst] = ODST (amber / steel, angular like Neon City); [neon] is true for both angular skins. */
+class Pal(neonSkin: Boolean, val odst: Boolean = false) {
+    val neon = neonSkin || odst
+    val bg = if (odst) 0xFF06080B.toInt() else if (neon) 0xFF07060B.toInt() else 0xFF000000.toInt()
+    val s1 = if (odst) 0xFF0C1118.toInt() else if (neon) 0xFF100E17.toInt() else 0xFF0B0F0C.toInt()
+    val p = if (odst) 0xFFFFB23F.toInt() else if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt()
+    val p2 = if (odst) 0xFF6F9CCC.toInt() else if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
+    val hi = if (odst) 0xFFFFB23F.toInt() else if (neon) 0xFFF7E733.toInt() else 0xFF3DFF7A.toInt()
+    val body = if (odst) 0xFFE9EEF5.toInt() else if (neon) 0xFFEEF2F3.toInt() else 0xFFB8F5C8.toInt()
+    val dim = if (odst) 0xFF7D8894.toInt() else if (neon) 0xFF8A8D9E.toInt() else 0xFF5E8F6B.toInt()
+    val line = if (odst) 0x55FFB23F else if (neon) 0x553EE8F0 else 0x443DFF7A
     val font: Typeface = if (neon) Typeface.create("sans-serif-condensed", Typeface.NORMAL) else Typeface.MONOSPACE
     val bold: Typeface = if (neon) Typeface.create("sans-serif-condensed", Typeface.BOLD) else Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
     fun up(s: String) = if (neon) s.uppercase() else s

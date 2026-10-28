@@ -10,6 +10,12 @@ class Prefs(ctx: Context) {
     private fun b(k: String, d: Boolean) = sp.getBoolean(k, d)
     var theme: String get() = s("theme", "matrix"); set(v) = sp.edit().putString("theme", v).apply()
     val neon get() = theme == "neon"
+    /** 0.1.17 ODST skin. */
+    val odst get() = theme == "odst"
+    /** ODST VISR night mode: "auto" (after dark), "on", "off". */
+    var visr: String get() = s("visr", "auto"); set(v) = sp.edit().putString("visr", v).apply()
+    /** ODST 4-note civic chime on PA panels (still silent on vibrate / silent / in calls). */
+    var chime: Boolean get() = b("chime", true); set(v) = sp.edit().putBoolean("chime", v).apply()
     var icons: IconStyle get() = runCatching { IconStyle.valueOf(s("icons", "ABSTRACT")) }.getOrDefault(IconStyle.ABSTRACT); set(v) = sp.edit().putString("icons", v.name).apply()
     var glitch: Boolean get() = b("glitch", true); set(v) = sp.edit().putBoolean("glitch", v).apply()
     var reduce: Boolean get() = b("reduce", false); set(v) = sp.edit().putBoolean("reduce", v).apply()
@@ -31,6 +37,16 @@ class Prefs(ctx: Context) {
     var onboarded: Boolean get() = b("onboarded", false); set(v) = sp.edit().putBoolean("onboarded", v).apply()
     var homeVisits: Int get() = sp.getInt("homeVisits", 0); set(v) = sp.edit().putInt("homeVisits", v).apply()
     var wxCache: String get() = s("wxCache", ""); set(v) = sp.edit().putString("wxCache", v).apply()
+    // 0.1.15 companion (all local to this phone)
+    /** Orb activities, reactions and body language. */
+    var companion: Boolean get() = b("companion", true); set(v) = sp.edit().putBoolean("companion", v).apply()
+    /** The orb's own chat bubbles (separate from notification bubbles). */
+    var chat: Boolean get() = b("chat", true); set(v) = sp.edit().putBoolean("chat", v).apply()
+    /** What Prime calls you in bubbles (blank = no name). */
+    var buddyName: String get() = s("buddyName", ""); set(v) = sp.edit().putString("buddyName", v.trim().take(24)).apply()
+    /** Optional study progress for study nudges (blank = generic lines only). */
+    var studyCourse: String get() = s("studyCourse", ""); set(v) = sp.edit().putString("studyCourse", v.trim().take(12)).apply()
+    var studyModule: String get() = s("studyModule", ""); set(v) = sp.edit().putString("studyModule", v.trim().take(12)).apply()
 }
 
 object Quick {

@@ -25,6 +25,8 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
         fun ringApps(): List<AppEntry>
         fun onOrbTap(); fun onRingPick(a: AppEntry); fun onFlick(dir: String)
         fun onSwipeUp(); fun onSwipeDown(); fun onLongPressBg(); fun onFrame(t: Double); fun ringHint(s: String?)
+        /** 0.1.15 App Nudge: ring tile index Prime thinks you want right now, or -1. */
+        fun nudgeIndex(): Int = -1
     }
     val d = resources.displayMetrics.density
     var W = 411f; private set; var H = 914f; private set
@@ -41,9 +43,11 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     var inCall = false; var callK = 0.0; var callLvl = 0.0
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val wave = android.graphics.Path()
+    /** 0.1.15 companion: antics, body-language layers, chat bubbles, two-finger poke / pet, tilt. */
+    val buddy = Buddy(this, prefs)
 
     fun cxOrb() = W / 2
-    fun orbR() = if (prefs.neon) 96f else 102f
+    fun orbR() = Skin.radius(prefs.theme)
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { W = w / d; H = h / d; rebuild() }
     fun layoutInsets(top: Float, bottom: Float) { topInset = top; bottomInset = bottom; if (width > 0) rebuild() }
@@ -54,7 +58,8 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
         val old = if (this::orb.isInitialized) orb else null
         val q = if (prefs.saver) 0.55 else 1.0
         ring = host.ringApps()
-        orb = Orb(cxOrb(), cy, orbR(), if (prefs.neon) Skin.NEON else Skin.MATRIX, d, q, buildRing(), prefs.glitch)
+        orb = Orb(cxOrb(), cy, orbR(), Skin.of(prefs.theme), d, q, buildRing(), prefs.glitch)
+        orb.glowOn = !prefs.saver; visrOn = null
         orb.amp = if (prefs.reduce) 0.5 else 1.0
         if (old != null) { orb.t = old.t; orb.nextBlink = old.t + 1.5; orb.nextGlitch = old.t + 1; orb.mode = old.mode; orb.syncMode(); orb.lively = old.lively; orb.yawny = old.yawny; orb.sleep.copyFrom(old.sleep); old.recycle() }
         else if (sleepPending) orb.sleep.sleepNow()
@@ -93,7 +98,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     fun refreshRing() { ring = host.ringApps(); if (this::orb.isInitialized) orb.setRingSpec(buildRing()) }
 
     private fun makeRain(): Rain {
-        val auto = prefs.wpStyle == "auto"; val style = if (auto) (if (prefs.neon) "streaks" else "glyphs") else prefs.wpStyle
+        val auto = prefs.wpStyle == "auto"; val style = if (auto) (if (prefs.odst) "city" else if (prefs.neon) "streaks" else "glyphs") else prefs.wpStyle
         val rgb = if (prefs.wpHue >= 0) Rain.hsl(prefs.wpHue) else if (style == "streaks" && prefs.wpHue < 0) 0 else if (prefs.neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt()
         return Rain(W, H, cy, d, style, prefs.wpGlyphs, prefs.wpDensity, prefs.wpSpeed, rgb, prefs.neon)
     }
@@ -118,8 +123,8 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     // ---------- frame loop ----------
     /** Tests only: frames are driven by hand instead of by Choreographer. */
     var manualFrames = false
-    fun start() { if (!running) { running = true; lastNs = 0; framesSinceStart = 0; if (!manualFrames) Choreographer.getInstance().postFrameCallback(this) } }
-    fun stop() { running = false; Choreographer.getInstance().removeFrameCallback(this) }
+    fun start() { if (!running) { running = true; lastNs = 0; framesSinceStart = 0; if (!manualFrames) Choreographer.getInstance().postFrameCallback(this) }; buddy.resume() }
+    fun stop() { running = false; Choreographer.getInstance().removeFrameCallback(this); buddy.pause() }
     override fun doFrame(ns: Long) {
         if (!running) return
         if (!manualFrames) Choreographer.getInstance().postFrameCallback(this)
@@ -131,8 +136,10 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
         if (!this::orb.isInitialized) return
         if (wakePending && framesSinceStart >= 2) { wakePending = false; orb.wake(pendingDur) }
         orb.step(if (prefs.reduce) dt * 0.5 else dt); framesSinceStart++
+        buddy.step(if (prefs.reduce) dt * 0.5 else dt)
         callK = (callK + if (inCall) dt / 0.6 else -dt / 0.5).coerceIn(0.0, 1.0)
         if (!prefs.reduce) rain?.step(dt.toFloat())
+        visrStep()
         host.onFrame(orb.t)
         if (!suspended) invalidate()
     }
@@ -140,17 +147,29 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     override fun onDraw(cv: Canvas) {
         if (!this::orb.isInitialized) return
         cv.save(); cv.scale(d, d)
-        rain?.draw(cv, orb.t, reveal)
-        drawCharge(cv); drawCallHalo(cv, behind = true); orb.draw(cv); drawNotePulse(cv); drawVoiceRings(cv); drawCallHalo(cv, behind = false)
+        rain?.draw(cv, orb.t, reveal, orb.pose.rainMul.toFloat(), !prefs.saver)
+        drawCharge(cv); drawCallHalo(cv, behind = true); buddy.drawUnder(cv); orb.draw(cv); buddy.drawOver(cv); drawNotePulse(cv); drawVoiceRings(cv); drawCallHalo(cv, behind = false)
         if (dimOverlay > 0.01f) { paint.shader = null; paint.color = Color.argb((dimOverlay * 255).toInt().coerceIn(0, 200), 0, 0, 0); cv.drawRect(0f, 0f, W, H, paint) }
+        buddy.drawBubble(cv)
         cv.restore()
+    }
+    // ---------- 0.1.17 ODST VISR night mode ----------
+    private var visrOn: Boolean? = null; private var visrCheckT = -9.0
+    /** VISR: Settings Auto (after dark: the forecast's day flag, else 7 pm-6 am) / Always / Off. Auto switches play a little HUD blink. */
+    private fun visrStep() {
+        if (!prefs.odst) { if (visrOn == true) { orb.visr = false; rain?.setVisr(false, orb.t, false) }; visrOn = null; return }
+        if (visrOn != null && orb.t - visrCheckT < 1.0) return; visrCheckT = orb.t
+        val want = when (prefs.visr) { "on" -> true; "off" -> false; else -> visrNight(Wx.from(prefs.wxCache), java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), System.currentTimeMillis()) }
+        val prev = visrOn; if (prev == want) return; visrOn = want; orb.visr = want
+        val anim = prev != null && !prefs.reduce; rain?.setVisr(want, orb.t, anim)
+        if (anim && want && prefs.visr == "auto") buddy.play(OdstAntics.VISR_ON)
     }
     private fun rgbA(c: Int, a: Double) = Color.argb((a.coerceIn(0.0, 1.0) * 255).toInt(), Color.red(c), Color.green(c), Color.blue(c))
 
     private var chargeKey: FloatArray? = null; private var chargeLin: Shader? = null; private var chargeRad: Shader? = null
     private fun drawCharge(cv: Canvas) {
         val t = orb.t; val plug = t - plugT < 4.0; if (!charging && !plug) return
-        val neon = prefs.neon; val c1 = if (neon) 0xFFF7E733.toInt() else 0xFF3DFF7A.toInt(); val c2 = if (neon) 0xFF3EE8F0.toInt() else 0xFFE2FFE9.toInt()
+        val neon = prefs.neon; val c1 = if (prefs.odst) OdstArt.AMBER else if (neon) 0xFFF7E733.toInt() else 0xFF3DFF7A.toInt(); val c2 = if (prefs.odst) OdstArt.STEEL else if (neon) 0xFF3EE8F0.toInt() else 0xFFE2FFE9.toInt()
         val cx = cxOrb(); val R = orb.radius(); val y0 = H - bottomInset - 2; val y1 = cy + R * 0.92f
         paint.blendMode = BlendMode.PLUS; paint.style = Paint.Style.FILL
         val key = floatArrayOf(y0, cy + orbR() * 0.92f, cx, c1.toFloat()) // fixed endpoint: the breathing radius must not rebuild the shader each frame
@@ -168,7 +187,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     private fun drawNotePulse(cv: Canvas) {
         val k = orb.t - noteT; if (k < 0 || k > 1.3 || prefs.reduce) return
         paint.blendMode = BlendMode.PLUS; paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.6f
-        for (i in 0 until 2) { val kk = k - i * 0.2; if (kk < 0) continue; paint.color = rgbA(if (prefs.neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt(), max(0.0, 1 - kk / 1.1) * 0.6)
+        for (i in 0 until 2) { val kk = k - i * 0.2; if (kk < 0) continue; paint.color = rgbA(if (prefs.odst) OdstArt.AMBER else if (prefs.neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt(), max(0.0, 1 - kk / 1.1) * 0.6)
             cv.drawCircle(cxOrb(), cy, orb.radius() * (1.03f + kk.toFloat() * 0.6f), paint) }
         paint.style = Paint.Style.FILL; paint.blendMode = null
     }
@@ -180,7 +199,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     private fun drawCallHalo(cv: Canvas, behind: Boolean) {
         val k = callK * callK * (3 - 2 * callK); if (k < 0.01) return
         val t = orb.t; val R = orb.radius(); val cx = cxOrb(); val neon = prefs.neon; val lv = callLvl.coerceIn(0.0, 1.0)
-        val c1 = if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt(); val c2 = if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
+        val c1 = if (prefs.odst) OdstArt.AMBER else if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt(); val c2 = if (prefs.odst) OdstArt.STEEL else if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
         paint.blendMode = BlendMode.PLUS
         if (behind) { // glow behind the orb
             val g = 0.16 + 0.14 * lv + (if (prefs.reduce) 0.05 * sin(t * 1.4) else 0.0)
@@ -223,7 +242,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     private fun drawVoiceRings(cv: Canvas) {
         if (callK > 0.5) return // the call halo replaces the plain listening rings
         if (orb.ls < 0.02) return; val R = orb.radius(); paint.blendMode = BlendMode.PLUS; paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.2f
-        for (i in 0 until 3) { val ph = (orb.t * 0.7 + i / 3.0) % 1; val col = if (prefs.neon) (if (i % 2 == 1) 0xFF3EE8F0.toInt() else 0xFFFF3D81.toInt()) else 0xFF3DFF7A.toInt()
+        for (i in 0 until 3) { val ph = (orb.t * 0.7 + i / 3.0) % 1; val col = if (prefs.odst) (if (i % 2 == 1) OdstArt.STEEL else OdstArt.AMBER) else if (prefs.neon) (if (i % 2 == 1) 0xFF3EE8F0.toInt() else 0xFFFF3D81.toInt()) else 0xFF3DFF7A.toInt()
             paint.color = rgbA(col, orb.ls * (1 - ph) * (0.18 + 0.5 * orb.lvl)); cv.drawCircle(cxOrb(), cy, R * (1.08f + ph.toFloat() * 0.55f), paint) }
         paint.style = Paint.Style.FILL; paint.blendMode = null
     }
@@ -235,7 +254,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     private var swallow = false
     private val holdRun = Runnable { if (onOrb && !moved) summon() }
     private val longRun = Runnable { if (!onOrb && !moved) { longFired = true; host.onLongPressBg() } }
-    private fun summon() { summoned = true; refreshRing(); orb.mode = Mode.SUMMON; performHapticFeedback(HAPTIC_FEEDBACK_ENABLED_LONG_PRESS()); host.ringHint(if (ring.isEmpty()) EMPTY_HINT else "slide to an app · release") }
+    private fun summon() { summoned = true; refreshRing(); orb.mode = Mode.SUMMON; buddy.clearBubble(); buddy.stopAntic(); buddy.nudge(host.nudgeIndex()); performHapticFeedback(HAPTIC_FEEDBACK_ENABLED_LONG_PRESS()); host.ringHint(if (ring.isEmpty()) EMPTY_HINT else "slide to an app · release") }
     private val EMPTY_HINT = "no pinned apps · pin them in the app drawer"
     @Suppress("FunctionName") private fun HAPTIC_FEEDBACK_ENABLED_LONG_PRESS() = android.view.HapticFeedbackConstants.LONG_PRESS
     fun closeRing() { if (!this::orb.isInitialized) { summoned = false; sticky = false; return }; summoned = false; sticky = false; orb.hot = -1; if (orb.mode == Mode.SUMMON) orb.mode = Mode.IDLE; host.ringHint(null) }
@@ -244,6 +263,14 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val x = e.x / d; val y = e.y / d
+        // 0.1.15: chat-bubble touches and two-finger poke / pet belong to the companion; one-finger gestures below are unchanged.
+        if (buddy.onTouch(e, x, y, onOrb && e.actionMasked != MotionEvent.ACTION_DOWN, summoned || sticky)) {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> { removeCallbacks(holdRun); removeCallbacks(longRun); swallow = true; if (e.actionMasked == MotionEvent.ACTION_DOWN) { onOrb = false; sticky = false } }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { swallow = false; onOrb = false; if (this::orb.isInitialized) orb.hovT = 0.0 }
+            }
+            return true
+        }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 // Reset every per-gesture flag first, so nothing from the previous gesture (e.g. the hold that summoned the ring) leaks in.
@@ -286,3 +313,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
         return true
     }
 }
+
+/** VISR auto rule: the cached forecast's night flag when it is fresh (<= 6 h), else 7 pm to 6 am. */
+fun visrNight(w: Wx?, hour: Int, nowMs: Long): Boolean =
+    if (w != null && nowMs - w.fetched < 6 * 3600_000L) !w.day else hour >= 19 || hour < 6

@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">Beacon</string>
-    <string name="hangup_label">Prime hang-up button</string>
-    <string name="hangup_summary">Lets the red button on Prime\'s home screen end your Grok Bot call.</string>
-    <string name="hangup_desc">What this does: when you tap the red hang-up button on the Beacon home screen, Prime opens Grok Bot\'s call screen and taps Grok Bot\'s own End call button for you, then returns to the home screen.\n\nWhat it can see: only Grok Bot\'s screens (no other app). It acts only in the 5 seconds after you tap the hang-up button, and only clicks that one button. It never reads or saves anything on screen, types nothing, makes no gestures, and doesn\'t watch your keys.</string>
+    <string name="hangup_label">Prime hang-up helper</string>
+    <string name="hangup_summary">Lets Prime end your Grok Bot call by tapping Grok Bot\'s own End call button. Nothing in Beacon 0.1.20 triggers it yet.</string>
+    <string name="hangup_desc">What this does: when Prime is asked to hang up (Beacon 0.1.20 has no on-screen button for this yet), Prime opens Grok Bot\'s call screen and taps Grok Bot\'s own End call button for you, then returns to the home screen.\n\nWhat it can see: only Grok Bot\'s screens (no other app). It acts only in the 5 seconds after Prime is asked to hang up, and only clicks that one button. It never reads or saves anything on screen, types nothing, makes no gestures, and doesn\'t watch your keys.</string>
     <string name="prime_control_label">Prime Control</string>
     <string name="prime_control_description">Lets Prime see the screen and tap, swipe and type while Phone Link is connected. Distinct from the hang-up helper. Off until you turn it on. Factory-reset, root and recovery screens are always refused. Disconnect any time from the Prime link notification, the Quick Settings tile, or Settings.</string>
     <string name="phone_link_tile_label">Prime link</string>

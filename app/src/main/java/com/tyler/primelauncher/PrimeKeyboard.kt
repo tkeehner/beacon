@@ -29,8 +29,7 @@ import com.tyler.primelauncher.emitkb.ui.KbTarget
 import com.tyler.primelauncher.emitkb.ui.LocalKb
 import com.tyler.primelauncher.emitkb.ui.LocalTheme
 import com.tyler.primelauncher.emitkb.ui.MatrixKeyboard
-import com.tyler.primelauncher.emitkb.ui.MatrixTheme
-import com.tyler.primelauncher.emitkb.ui.NeonCityTheme
+import com.tyler.primelauncher.emitkb.ui.Themes
 
 /**
  * Emit's in-app keyboard (MatrixKeyboard, ported in emitkb/) driving a plain EditText on the home screen.
@@ -39,7 +38,7 @@ import com.tyler.primelauncher.emitkb.ui.NeonCityTheme
  */
 class PrimeKeyboard(private val act: HomeActivity) {
     val kb = KbController()
-    private var neon by mutableStateOf(false)
+    private var themeId by mutableStateOf("matrix")
     private var navDp by mutableFloatStateOf(0f)
     private var field: EditText? = null
     /** Called whenever the keyboard opens/closes or switches to/from the system IME. */
@@ -48,12 +47,12 @@ class PrimeKeyboard(private val act: HomeActivity) {
     val view: ComposeView = ComposeView(act).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         setContent {
-            CompositionLocalProvider(LocalKb provides kb, LocalTheme provides if (neon) NeonCityTheme else MatrixTheme) {
+            CompositionLocalProvider(LocalKb provides kb, LocalTheme provides Themes.byId(themeId)) {
                 LaunchedEffect(Unit) { snapshotFlow { kb.target to kb.useSystem }.collect { sync() } }
                 Column(Modifier.fillMaxWidth()) {
                     MatrixKeyboard(kb)
                     // Black strip under the keys so they sit above the gesture/nav bar (the window draws edge to edge).
-                    if (kb.visible) Spacer(Modifier.fillMaxWidth().height(navDp.dp).background(Color(if (neon) 0xFF07060B else 0xFF000000)))
+                    if (kb.visible) Spacer(Modifier.fillMaxWidth().height(navDp.dp).background(Color(when (themeId) { "neon" -> 0xFF07060B; "odst" -> 0xFF06080B; else -> 0xFF000000 })))
                 }
             }
         }
@@ -65,7 +64,8 @@ class PrimeKeyboard(private val act: HomeActivity) {
     val open: Boolean get() = kb.target != null
     val custom: Boolean get() = kb.visible
 
-    fun theme(neon: Boolean) { this.neon = neon }
+    /** Keyboard skin = the launcher theme id (matrix / neon / odst; ODST = armor-plate keys). */
+    fun theme(id: String) { themeId = id }
     fun navInset(dp: Float) { navDp = dp }
 
     /** Hook a field up: tapping it focuses it and opens Emit's keyboard instead of the system one. */

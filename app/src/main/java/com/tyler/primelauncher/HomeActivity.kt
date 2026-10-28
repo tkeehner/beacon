@@ -52,14 +52,16 @@ import kotlin.math.abs
 import kotlin.math.sin
 
 /** The home screen. Everything is built in code; the orb and wallpaper live in [StageView]. */
-class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, NotifStore.Listener {
+class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, NotifStore.Listener, CompanionBrain.Hooks {
     lateinit var prefs: Prefs; lateinit var stage: StageView; lateinit var pal: Pal
+    /** 0.1.15 companion brain (scheduler, persona lines, home moments). */
+    lateinit var brain: CompanionBrain
     private lateinit var root: FrameLayout; private lateinit var overlay: FrameLayout
     private lateinit var tTime: TextView; private lateinit var tDate: TextView; private lateinit var tWx: TextView; private lateinit var tWxIcon: TextView
     private lateinit var pill: TextView; private lateinit var torchChip: TextView; private lateinit var hint: TextView; private lateinit var ringHintV: TextView
     private lateinit var bubbles: FrameLayout; private lateinit var unread: TextView; private var tray: View? = null
     private lateinit var pbox: LinearLayout; private lateinit var pmsg: EditText; private lateinit var mxChip: TextView
-    private lateinit var callTime: TextView; private lateinit var hangup: HangupButton
+    private lateinit var callTime: TextView
     /** Emit's in-app keyboard for the Message Prime box (see PrimeKeyboard / emitkb). */
     lateinit var keys: PrimeKeyboard; private set
     private var kbH = 0; private var eatTouch = false; private var lastBars = ""
@@ -76,10 +78,11 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setDecorFitsSystemWindows(false)
-        prefs = Prefs(this); pal = Pal(prefs.neon); IconArt.load(this)
+        prefs = Prefs(this); pal = Pal(prefs.neon, prefs.odst); IconArt.load(this)
         root = FrameLayout(this); stage = StageView(this, prefs, this); root.addView(stage, FrameLayout.LayoutParams(MATCH, MATCH))
+        brain = CompanionBrain(this, prefs, stage, this); stage.buddy.listener = brain
         overlay = FrameLayout(this); root.addView(overlay, FrameLayout.LayoutParams(MATCH, MATCH))
-        keys = PrimeKeyboard(this).also { it.theme(prefs.neon); it.onChange = { placeBox(); renderKbChip() } }
+        keys = PrimeKeyboard(this).also { it.theme(prefs.theme); it.onChange = { placeBox(); renderKbChip() } }
         root.addView(keys.view, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM))
         keys.view.addOnLayoutChangeListener { v, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot) { kbH = v.height; placeBox() } }
         setContentView(root)
@@ -125,7 +128,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         if (panelKind == "onboard") openOnboarding()
     }
     override fun onPause() {
-        super.onPause(); wakeGate.paused(); keys.hide(); CallLevel.stop(); PrimeApp.homeVisible = false; runCatching { unregisterReceiver(battRx) }; stage.stop(); stage.closeRing(); WakeService.sync(this)
+        super.onPause(); brain.pausedHome(); wakeGate.paused(); keys.hide(); CallLevel.stop(); PrimeApp.homeVisible = false; runCatching { unregisterReceiver(battRx) }; stage.stop(); stage.closeRing(); WakeService.sync(this)
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -153,7 +156,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     private val lockRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             when (i.action) {
-                Intent.ACTION_SCREEN_OFF -> { wakeGate.screenOff(); stage.sleepOrb(); applyReveal() } // nobody is watching: hide now so unlock fades up from black
+                Intent.ACTION_SCREEN_OFF -> { wakeGate.screenOff(); brain.screenOff(); stage.sleepOrb(); applyReveal() } // nobody is watching: hide now so unlock fades up from black
                 Intent.ACTION_USER_PRESENT -> applyWake(wakeGate.unlocked(SystemClock.elapsedRealtime()))
             }
         }
@@ -161,7 +164,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     /** WAKE = an actual unlock-to-home: the slow wake + whole-screen fade. AWAKE_QUIET (stale unlock): instant. NONE: quick return. */
     private fun applyWake(a: WakeGate.Act) {
         when (a) {
-            WakeGate.Act.WAKE -> { stage.wakeOrb() }
+            WakeGate.Act.WAKE -> { stage.wakeOrb(); brain.onWake() }
             WakeGate.Act.AWAKE_QUIET -> { if (stage.ready) stage.orb.sleep.copyFrom(SleepState()) else stage.wakeOrb(SleepState.WAKE_S) }
             WakeGate.Act.NONE -> {}
         }
@@ -179,7 +182,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
 
     private val battRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
-            if (i.action == Intent.ACTION_POWER_CONNECTED && stage.ready) { stage.plugT = stage.orb.t; stage.orb.kick() }
+            if (i.action == Intent.ACTION_POWER_CONNECTED && stage.ready) { stage.plugT = stage.orb.t; stage.orb.kick(); brain.onPlug() }
             if (i.action == Intent.ACTION_BATTERY_CHANGED) { val l = i.getIntExtra(BatteryManager.EXTRA_LEVEL, 80); val s = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
                 val plugged = i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0; stage.level = l.toFloat() / s.coerceAtLeast(1); stage.charging = Logic.charging(plugged, stage.level) }
         }
@@ -193,9 +196,9 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         val reopen = this::keys.isInitialized && keys.open && panel == null // a rebuild must never drop an open keyboard
         val keepSel = if (this::pmsg.isInitialized) pmsg.selectionStart else -1
         if (this::pmsg.isInitialized) pmsg.onFocusChangeListener = null // removing the old box must not read as "focus left"
-        overlay.removeAllViews(); pal = Pal(prefs.neon); val ctx = this
+        overlay.removeAllViews(); pal = Pal(prefs.neon, prefs.odst); val ctx = this
         val widget = col().apply { setPadding(dpi(24f), dpi(topIn + 18f), dpi(24f), 0) }
-        tTime = text(pal, "", if (prefs.neon) 64f else 58f, pal.hi, bold = true); tTime.setShadowLayer(dp(10f), 0f, 0f, pal.hi)
+        tTime = text(pal, "", if (prefs.neon || prefs.odst) 64f else 58f, pal.hi, bold = true); tTime.setShadowLayer(dp(10f), 0f, 0f, pal.hi)
         tDate = text(pal, "", 14f, pal.body); tDate.setPadding(0, dpi(4f), 0, dpi(6f))
         tWxIcon = text(pal, "", 16f, pal.p2); tWx = text(pal, "", 13f, pal.body, lines = 1)
         val wxRow = row(tWxIcon, tWx).apply { setOnClickListener { toast("Updating weather…"); refreshWx(true) } }
@@ -210,11 +213,9 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         val orbBottom = stage.cy + stage.orbR()
         hint = text(pal, pal.up("hold to summon · tap to talk · swipe up for apps"), 11f, pal.dim).apply { gravity = Gravity.CENTER; visibility = View.GONE }
         overlay.addView(hint, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.TOP).apply { topMargin = dpi(orbBottom + 30f) })
-        // Live call: a quiet timer + red hang-up button under the orb (no instructions).
+        // Live call: a quiet timer under the orb (0.1.20: no on-screen hang-up button).
         callTime = text(pal, "", 12f, pal.dim).apply { gravity = Gravity.CENTER; visibility = View.GONE; letterSpacing = 0.12f }
         overlay.addView(callTime, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.TOP).apply { topMargin = dpi(orbBottom + 50f) })
-        hangup = HangupButton(this, prefs.neon, prefs.reduce).apply { visibility = View.GONE; setOnClickListener { hangUp() } }
-        overlay.addView(hangup, FrameLayout.LayoutParams(dpi(64f), dpi(64f), Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dpi(orbBottom + 74f) })
         ringHintV = text(pal, "", 12f, pal.p).apply { gravity = Gravity.CENTER; visibility = View.GONE }
         overlay.addView(ringHintV, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = dpi(botIn + 100f) })
         bubbles = FrameLayout(this).apply { clipChildren = false }
@@ -227,8 +228,8 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
             setSingleLine(true); imeOptions = EditorInfo.IME_ACTION_SEND; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             setOnEditorActionListener { _, a, _ -> if (a == EditorInfo.IME_ACTION_SEND) { sendPrime(); true } else false }
             setText(keepText); addTextChangedListener(typingWatcher { typed(this) }) }
-        val sendLabel = if (prefs.neon) "SEND" else "send"
-        keys.theme(prefs.neon); keys.attach(pmsg, sendLabel) { sendPrime() }
+        val sendLabel = if (prefs.neon || prefs.odst) "SEND" else "send"
+        keys.theme(prefs.theme); keys.attach(pmsg, sendLabel) { sendPrime() }
         // Emit's [mx] chip: shown while the system keyboard is in use (Emit's ⌨ key); tap to go back to Emit's keys.
         mxChip = text(pal, "[mx]", 13f, pal.p, bold = true).apply { setPadding(dpi(6f), dpi(8f), dpi(8f), dpi(8f)); visibility = View.GONE; setOnClickListener { keys.useMatrix() } }
         val send = text(pal, "\u27A4", 18f, pal.bg, bold = true).apply { gravity = Gravity.CENTER; background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(pal.p) }; setOnClickListener { sendPrime() } }
@@ -264,15 +265,8 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         val on = Call.active && panel == null && !stage.ringOpen
         if (on) { val s = (SystemClock.elapsedRealtime() - Call.startedAt) / 1000; callTime.text = Logic.callClock(s); hint.visibility = View.GONE }
         if (on != (callTime.visibility == View.VISIBLE)) {
-            callTime.visibility = if (on) View.VISIBLE else View.GONE; hangup.visibility = if (on) View.VISIBLE else View.GONE
-            if (on && !prefs.reduce) { hangup.scaleX = 0.4f; hangup.scaleY = 0.4f; hangup.alpha = 0f; hangup.animate().scaleX(1f).scaleY(1f).alpha(1f).setInterpolator(OvershootInterpolator(1.8f)).setDuration(420).start() }
+            callTime.visibility = if (on) View.VISIBLE else View.GONE
         }
-    }
-    /** Red button: bring Grok Bot's call screen up and, if the hang-up helper is on, let it tap Grok Bot's End call. */
-    private fun hangUp() {
-        if (stage.ready) stage.orb.kick(); if (HangupService.enabled(this)) HangupService.arm()
-        if (!Call.openCallScreen(this)) { HangupService.disarm(); toast("Couldn't open Grok Bot"); return }
-        main.postDelayed({ HangupService.instance?.tryHangup() }, 600)
     }
 
     // ---------- weather ----------
@@ -296,6 +290,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         val k = 0.02; o.pace += (mood.pace * (if (prefs.reduce) 0.5 else 1.0) - o.pace) * k; o.bright += (mood.bright - o.bright) * k; o.lid += (mood.lid - o.lid) * k; o.tired += (mood.tired - o.tired) * k
         // 0.1.13 personality: mood sets how curious Prime is (glances / perk-ups / fidgets) and whether it yawns; Reduce Motion halves it all.
         o.lively += (mood.lively - o.lively) * k; o.yawny = mood.yawn; o.amp = if (prefs.reduce) 0.5 else 1.0
+        if (PrimeApp.homeVisible && panel == null) brain.frame()
         if (stage.ringOpen) return
         stage.inCall = Call.active
         if (Call.active && PrimeApp.homeVisible) CallLevel.start() else CallLevel.stop()
@@ -307,8 +302,17 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
 
     // ---------- StageView.Host ----------
     override fun ringApps(): List<AppEntry> = Apps.ring(this, prefs.pins)
-    override fun onOrbTap() { stage.orb.kick(); Grok.fire(this, "orb tap") }
-    override fun onRingPick(a: AppEntry) { Apps.launch(this, a) }
+    override fun onOrbTap() { stage.orb.kick(); Grok.fire(this, "orb tap", this) }
+    override fun onRingPick(a: AppEntry) { brain.recordLaunch(a.pkg); Apps.launch(this, a) }
+    override fun nudgeIndex(): Int = brain.nudgeIndex(Apps.ring(this, prefs.pins).map { it.pkg })
+    // ---------- CompanionBrain.Hooks ----------
+    override fun companionBusy(): Boolean { val now = SystemClock.uptimeMillis(); return keys.open || panel != null || tray != null || sending || now < typingUntil || now < thinkUntil }
+    override fun noteBubblesShowing(): Boolean = shown.isNotEmpty()
+    /** A tapped orb bubble opens Message Prime with a draft typed in. Nothing is sent until you press send. */
+    override fun openPrimeDraft(text: String) {
+        if (!this::pmsg.isInitialized || panel != null) return
+        stage.closeRing(); pmsg.setText(text); pmsg.setSelection(text.length); keys.show(pmsg, if (prefs.neon || prefs.odst) "SEND" else "send") { sendPrime() }
+    }
     override fun onFlick(dir: String) { stage.orb.kick(); quick(prefs.quick(dir)) }
     override fun onSwipeUp() = openDrawer()
     override fun onSwipeDown() = openSearch()
@@ -319,7 +323,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         when {
             action == Quick.CAMERA -> runCatching { startActivity(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.onFailure { Apps.launchPkg(this, "com.sec.android.app.camera") }
             action == Quick.TORCH -> setTorch(!torchOn)
-            action == Quick.PRIME -> Grok.fire(this, "flick")
+            action == Quick.PRIME -> Grok.fire(this, "flick", this)
             action == Quick.DRAWER -> openDrawer()
             action == Quick.SEARCH -> openSearch()
             action.startsWith("app:") -> if (!Apps.launchPkg(this, action.removePrefix("app:"))) toast("That app isn't installed")
@@ -366,13 +370,14 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     // ---------- notifications ----------
     private val shown = ArrayList<Pair<Note, View>>(); private val queue = ArrayList<Note>()
     override fun onNote(n: Note, fresh: Boolean) {
+        brain.onNote(n, fresh)
         if (!fresh || !PrimeApp.homeVisible || !prefs.bubbles) return
-        if (stage.ready) { stage.noteT = stage.orb.t; stage.orb.kick(); stage.orb.lookAt(0.0, -0.14) }
+        if (stage.ready) { stage.noteT = stage.orb.t; if (!prefs.companion) { stage.orb.kick(); stage.orb.lookAt(0.0, -0.14) } }
         if (shown.size >= 3) { queue.add(n); return }
         showBubble(n)
     }
     override fun onNotesChanged() {
-        if (!this::unread.isInitialized) return; val c = NotifStore.all().size
+        if (!this::unread.isInitialized) return; val c = NotifStore.all().size; brain.onNotesChanged(c)
         unread.text = if (c > 99) "99+" else c.toString(); unread.visibility = if (c > 0 && panel == null) View.VISIBLE else View.GONE
         if (!prefs.reduce && c > 0) unread.animate().translationY(-dp(3f)).setDuration(900).withEndAction { unread.animate().translationY(0f).setDuration(900).start() }.start()
         if (tray != null) { if (c == 0) closeTray() else openTray() }
@@ -436,8 +441,8 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     private fun closeTray(anim: Boolean = true) { val t = tray ?: return; tray = null; overlay.removeView(t) }
 
     // ---------- tiles ----------
-    fun tile(pkg: String, label: String, sizeDp: Float): Bitmap { val px = dpi(sizeDp); val key = "$pkg|${prefs.icons}|${prefs.neon}|$px"
-        return tiles.get(key) ?: IconArt.tile(pkg, label, prefs.icons, prefs.neon, px, stage.d).also { tiles.put(key, it) } }
+    fun tile(pkg: String, label: String, sizeDp: Float): Bitmap { val px = dpi(sizeDp); val key = "$pkg|${prefs.icons}|${prefs.theme}|$px"
+        return tiles.get(key) ?: IconArt.tile(pkg, label, prefs.icons, prefs.neon, px, stage.d, prefs.odst).also { tiles.put(key, it) } }
 
     // ---------- panels ----------
     fun showPanel(kind: String, v: View, lpv: FrameLayout.LayoutParams = FrameLayout.LayoutParams(MATCH, MATCH), fromBottom: Boolean = true) {
@@ -463,7 +468,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     fun typedInSearch(e: EditText) = typed(e)
 
     /** Theme / icon / wallpaper changes: rebuild what depends on them. */
-    fun applyLook() { pal = Pal(prefs.neon); keys.theme(prefs.neon); tiles.evictAll(); stage.rebuild(); buildOverlay(); stage.dimOverlay = 0f }
+    fun applyLook() { pal = Pal(prefs.neon, prefs.odst); keys.theme(prefs.theme); tiles.evictAll(); stage.rebuild(); buildOverlay(); stage.dimOverlay = 0f }
 
     fun hideKeyboard(v: View) { getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(v.windowToken, 0) }
     fun showKeyboard(e: EditText) { e.requestFocus(); main.postDelayed({ getSystemService(InputMethodManager::class.java).showSoftInput(e, InputMethodManager.SHOW_IMPLICIT) }, 120) }

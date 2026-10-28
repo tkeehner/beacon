@@ -98,7 +98,7 @@ class LockOrbActivity : Activity() {
         private val prefs = Prefs(ctx)
         init { setBackgroundColor(Color.BLACK) }
         override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-            orb?.recycle(); orb = Orb(w / d / 2, h / d * 0.42f, if (prefs.neon) 96f else 102f, if (prefs.neon) Skin.NEON else Skin.MATRIX, d, 0.55, null, false).also { it.sleep.sleepNow(); it.still = true }
+            orb?.recycle(); orb = Orb(w / d / 2, h / d * 0.42f, Skin.radius(prefs.theme), Skin.of(prefs.theme), d, 0.55, null, false).also { it.sleep.sleepNow(); it.still = true }
         }
         fun start() { if (noFramesForTest) return; if (!on) { on = true; last = 0; Choreographer.getInstance().postFrameCallback(this) } }
         fun stop() { on = false; Choreographer.getInstance().removeFrameCallback(this) }

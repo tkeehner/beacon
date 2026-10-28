@@ -10,7 +10,12 @@ import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
-data class Note(val key: String, val pkg: String, val title: String, val text: String, val time: Long, val intent: PendingIntent?, val clearable: Boolean, val autoCancel: Boolean)
+data class Note(val key: String, val pkg: String, val title: String, val text: String, val time: Long, val intent: PendingIntent?, val clearable: Boolean, val autoCancel: Boolean,
+                /** 0.1.15: for the orb's heads-up (calls / alarms / high priority jump) and the "read it?" offer on new messages. */
+                val category: String? = null, val important: Boolean = false) {
+    val messaging get() = category == Notification.CATEGORY_MESSAGE || pkg in MESSAGING
+    companion object { val MESSAGING = setOf("com.tyler.matrixsms", "com.google.android.apps.messaging", "com.samsung.android.messaging") }
+}
 
 /** In-process store fed by [NotifService]; the home screen listens for changes. */
 object NotifStore {
@@ -35,7 +40,8 @@ object NotifStore {
         val title = ex.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
         val text = (ex.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: ex.getCharSequence(Notification.EXTRA_TEXT))?.toString().orEmpty()
         if (!keep(sbn.packageName, self, n.flags, n.flags and Notification.FLAG_GROUP_SUMMARY != 0, title, text)) return null
-        return Note(sbn.key, sbn.packageName, title, text, sbn.postTime, n.contentIntent, sbn.isClearable, n.flags and Notification.FLAG_AUTO_CANCEL != 0)
+        @Suppress("DEPRECATION") val important = n.category == Notification.CATEGORY_CALL || n.category == Notification.CATEGORY_ALARM || n.priority >= Notification.PRIORITY_HIGH
+        return Note(sbn.key, sbn.packageName, title, text, sbn.postTime, n.contentIntent, sbn.isClearable, n.flags and Notification.FLAG_AUTO_CANCEL != 0, n.category, important)
     }
     fun posted(n: Note, alerting: Boolean) {
         val fresh: Boolean
@@ -79,6 +85,8 @@ class NotifService : NotificationListenerService() {
         if (sbn.packageName != Grok.PKG) return
         val n = sbn.notification; val ongoing = n.flags and (Notification.FLAG_ONGOING_EVENT or Notification.FLAG_FOREGROUND_SERVICE) != 0
         if (!ongoing) { Call.grokRemoved(sbn.key); return }
-        Call.grokPosted(sbn.key, NotifStore.isCallNote(n.flags, n.category), n.contentIntent); Call.poll(this); WakeService.sync(this)
+        val isCall = NotifStore.isCallNote(n.flags, n.category); Call.grokPosted(sbn.key, isCall, n.contentIntent)
+        if (isCall) Grok.onGrokCallNote(this)
+        Call.poll(this); WakeService.sync(this)
     }
 }

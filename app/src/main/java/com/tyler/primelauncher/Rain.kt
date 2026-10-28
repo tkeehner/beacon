@@ -24,6 +24,9 @@ class Rain(private val W: Float, private val H: Float, private val cy: Float, pr
     private var strip: Bitmap? = null; private val stripCols = HashMap<Int, android.graphics.Rect>()
     private val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG); private val dst = RectF()
     private var solid: RadialGradient? = null; private var floorG: LinearGradient? = null
+    /** 0.1.17 ODST "city": rainy skyline through wet glass (VISR outlines at night). */
+    private val city = if (style == "city") CityBackdrop(W, H, dpr, density, speed) else null
+    fun setVisr(on: Boolean, t: Double, animate: Boolean) { city?.setVisr(on, t, animate) }
 
     companion object {
         val SETS = mapOf("binary" to "01", "hex" to "0123456789ABCDEF")
@@ -69,7 +72,8 @@ class Rain(private val W: Float, private val H: Float, private val cy: Float, pr
     }
     fun step(dt: Float) { for (d in drops) { d.y += d.v * dt; val top = if (style == "streaks") d.h else d.n * 14f; if (d.y - top > H) d.y = -10f } }
 
-    fun draw(cv: Canvas, t: Double, dim: Float) {
+    fun draw(cv: Canvas, t: Double, dim: Float, rainMul: Float = 1f, glow: Boolean = true) {
+        city?.let { cv.drawColor(Color.BLACK); it.draw(cv, t, dim, rainMul, glow); return }
         cv.drawColor(if (neon) 0xFF07060B.toInt() else Color.BLACK)
         when (style) {
             "solid" -> { val g = solid ?: RadialGradient(W / 2, cy, H * 0.75f, Color.argb(51, Color.red(rgb), Color.green(rgb), Color.blue(rgb)), Color.argb(10, Color.red(rgb), Color.green(rgb), Color.blue(rgb)), Shader.TileMode.CLAMP).also { solid = it }
@@ -85,5 +89,5 @@ class Rain(private val W: Float, private val H: Float, private val cy: Float, pr
             p.shader = g; p.alpha = (255 * dim).toInt().coerceIn(0, 255); cv.drawRect(0f, H - 300, W, H, p); p.shader = null }
         p.alpha = 255
     }
-    fun recycle() { atlas?.recycle(); atlas = null; strip?.recycle(); strip = null }
+    fun recycle() { atlas?.recycle(); atlas = null; strip?.recycle(); strip = null; city?.recycle() }
 }

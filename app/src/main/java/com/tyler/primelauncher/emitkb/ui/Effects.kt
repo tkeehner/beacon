@@ -67,7 +67,11 @@ fun glyphFor(key: String): Char = GLYPHS[abs(key.hashCode()) % GLYPHS.length]
 @Composable
 fun CodeRain(modifier: Modifier = Modifier, alpha: Float = 0.18f) {
     if (alpha <= 0f) return
-    if (LocalTheme.current.rain == RainStyle.DRIZZLE) NeonDrizzle(modifier, alpha) else KatakanaRain(modifier, alpha)
+    when (LocalTheme.current.rain) {
+        RainStyle.DRIZZLE -> NeonDrizzle(modifier, alpha)
+        RainStyle.CITY -> {} // ODST: the launcher's own city backdrop shows behind the keys
+        RainStyle.KATAKANA -> KatakanaRain(modifier, alpha)
+    }
 }
 
 @Composable

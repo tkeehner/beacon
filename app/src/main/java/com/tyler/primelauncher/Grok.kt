@@ -1,5 +1,6 @@
 package com.tyler.primelauncher
 
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -7,12 +8,16 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import android.provider.Settings
 
-/** "Hey Prime" method C: ASSIST into Grok Bot's trampoline, then back to this home screen after 2 s while the call keeps going. */
+/**
+ * Entry for every way the owner asks for Prime (orb tap, flick, Hey Prime, lock-alert tap). 0.1.20: everything goes through
+ * the system assist path ([CallLaunch.fire]), like long-pressing Home. The trampoline + bounce-home below is only the
+ * silent last-resort fallback.
+ */
 object Grok {
     const val PKG = "ai.x.grok.bot"
     const val TRAMPOLINE = "expo.modules.nativehelpers.AssistTrampolineActivity"
@@ -20,22 +25,36 @@ object Grok {
     private const val TRIGGER_ID = 42
     const val HOME_DELAY_MS = 2000L
     private val main = Handler(Looper.getMainLooper())
+    @Volatile private var homeToken = 0L
 
     fun assistIntent(): Intent = Intent(Intent.ACTION_ASSIST).setComponent(ComponentName(PKG, TRAMPOLINE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     fun homeIntent(ctx: Context): Intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(ctx.packageName)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_ANIMATION)
 
-    /** From the orb tap or the wake word. */
-    fun fire(ctx: Context, source: String) {
-        if (PrimeApp.homeVisible || Settings.canDrawOverlays(ctx)) runNow(ctx, source) else postAlert(ctx)
+    /** From the orb tap, wake word, or flick. [activity] lets the system assist path use [Activity.showAssist]. */
+    fun fire(ctx: Context, source: String, activity: Activity? = null) {
+        if (PrimeApp.homeVisible || Settings.canDrawOverlays(ctx)) runNow(ctx, source, activity) else postAlert(ctx)
     }
-    fun runNow(ctx: Context, source: String) {
-        val app = ctx.applicationContext
-        val ok = runCatching { app.startActivity(assistIntent()); true }.getOrElse { Apps.launchPkg(app, PKG) }
-        if (!ok) { Call.end(); return }
-        Call.begin(source)
-        main.postDelayed({ runCatching { app.startActivity(homeIntent(app)) } }, HOME_DELAY_MS)
+    fun runNow(ctx: Context, source: String, activity: Activity? = null) = CallLaunch.fire(ctx, source, activity)
+
+    /** Schedule the bounce-home; cancelled / replaced by [onGrokCallNote] when the Voice calls notification lands. */
+    fun homeSoon(ctx: Context) {
+        val token = ++homeToken; val app = ctx.applicationContext
+        CallLaunch.log("homeSoon: scheduled in ${HOME_DELAY_MS}ms token=$token")
+        main.postDelayed({ if (token == homeToken) goHome(app, "timeout") }, HOME_DELAY_MS)
     }
+    /** NotifService: a Grok Bot call-category / FGS notification just posted → bounce now (trampoline fallback only). */
+    fun onGrokCallNote(ctx: Context) {
+        if (homeToken == 0L) return
+        CallLaunch.log("homeSoon: Voice-calls notification posted → bounce now")
+        goHome(ctx.applicationContext, "call-note")
+    }
+    private fun goHome(app: Context, why: String) {
+        homeToken = 0L
+        CallLaunch.log("goHome why=$why")
+        runCatching { app.startActivity(homeIntent(app), android.app.ActivityOptions.makeCustomAnimation(app, 0, 0).toBundle()) }
+    }
+
     private fun postAlert(ctx: Context) {
         val pi = PendingIntent.getActivity(ctx, 7, Intent(ctx, TriggerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(ctx, TRIGGER_CHANNEL).setSmallIcon(R.drawable.ic_stat).setContentTitle("Hey Prime")
@@ -55,7 +74,7 @@ object Grok {
 object Call {
     @Volatile var active = false; private set
     @Volatile var startedAt = 0L; private set
-    /** Grok Bot's ongoing notifications by key (from NotifService): is-call flag + tap target for the hang-up button. */
+    /** Grok Bot's ongoing notifications by key (from NotifService): is-call flag + tap target for [Call.openCallScreen]. */
     private val grokNotes = java.util.concurrent.ConcurrentHashMap<String, Pair<Boolean, PendingIntent?>>()
     private val tracker = CallTracker()
     var onChange: (() -> Unit)? = null
@@ -87,7 +106,7 @@ object Call {
         onChange?.let { f -> Handler(Looper.getMainLooper()).post(f) }
     }
 
-    /** Hang-up button: bring Grok Bot's call screen forward so the owner can end it there (an app can't end another app's call). */
+    /** Bring Grok Bot's call screen forward so the owner can end it there (an app can't end another app's call). */
     fun openCallScreen(ctx: Context): Boolean {
         val pi = callIntent()
         if (pi != null) {

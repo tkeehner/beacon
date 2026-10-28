@@ -24,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -210,7 +211,7 @@ fun MatrixKeyboard(kb: KbController) {
                 repeat(5) { jitter.snapTo((Random.nextFloat() - 0.5f) * 18f); delay(35) }; jitter.snapTo(0f)
             }
             var settings by remember { mutableStateOf(false) }
-            val neonKeys = LocalTheme.current.keyStyle == KeyStyle.NEON
+            val neonKeys = LocalTheme.current.keyStyle != KeyStyle.MATRIX
             Box(Modifier.fillMaxWidth().background(Black).graphicsLayer { translationX = jitter.value }) {
                 CodeRain(Modifier.matchParentSize(), alpha = 0.06f)
                 Column(Modifier.fillMaxWidth().padding(horizontal = 1.dp, vertical = 2.dp)) {
@@ -243,7 +244,7 @@ private fun SuggestionStrip(kb: KbController, onGear: () -> Unit) {
         catch (c: kotlinx.coroutines.CancellationException) { throw c }
         catch (t: Throwable) { android.util.Log.w("MatrixSMS", "suggest: failed", t); Slots(null, null, null) }
     }
-    val neon = LocalTheme.current.keyStyle == KeyStyle.NEON
+    val neon = LocalTheme.current.keyStyle != KeyStyle.MATRIX
     Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
         listOf(slots.left, slots.center, slots.right).forEachIndexed { i, w ->
             val center = i == 1
@@ -409,7 +410,11 @@ private fun KeyRow(keys: List<KeySpec>, inset: Float = 0f, tall: Boolean = false
 
 @Composable
 private fun RowScope.KeyFace(k: KeySpec, down: Boolean, h: androidx.compose.ui.unit.Dp) {
-    if (LocalTheme.current.keyStyle == KeyStyle.NEON) NeonKeyFace(k, down, h) else MatrixKeyFace(k, down, h)
+    when (LocalTheme.current.keyStyle) {
+        KeyStyle.NEON -> NeonKeyFace(k, down, h)
+        KeyStyle.ARMOR -> ArmorKeyFace(k, down, h)
+        KeyStyle.MATRIX -> MatrixKeyFace(k, down, h)
+    }
 }
 
 @Composable
@@ -473,6 +478,46 @@ private fun RowScope.NeonKeyFace(k: KeySpec, down: Boolean, h: androidx.compose.
                             fontSize = 34.sp, modifier = Modifier.offset(x = 2.dp))
                     }
                     Text(label, color = Pal.Primary, fontFamily = KeyFont, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontSize = 34.sp)
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * ODST armor plate: chamfered top-left/bottom-right, a steel gradient with a top highlight and a bottom shadow line,
+ * amber accent keys, and a VISR edge + glow while pressed. The plate sinks 2dp on press.
+ */
+@Composable
+private fun RowScope.ArmorKeyFace(k: KeySpec, down: Boolean, h: androidx.compose.ui.unit.Dp) {
+    val shape = CutCornerShape(5.dp, 6.dp)
+    val visr = Color(LocalTheme.current.palette.accent3)
+    val accentKey = k.tone != KeyTone.NORMAL
+    val glow = down && keyGlowEnabled()
+    val top = if (accentKey) Color(0xFF5A4216) else Color(0xFF323A45)
+    val bottom = if (accentKey) Color(0xFF2A1D08) else Color(0xFF151A21)
+    val label = k.label
+    Box(
+        Modifier.weight(k.weight).fillMaxHeight().padding(horizontal = 1.5.dp, vertical = 2.5.dp)
+            .offset(y = if (down) 2.dp else 0.dp)
+            .then(if (glow) Modifier.shadow(8.dp, shape, ambientColor = visr, spotColor = visr) else Modifier)
+            .background(Brush.verticalGradient(listOf(top, bottom)), shape)
+            .border(if (down) 1.6.dp else 1.dp, if (down) visr else if (k.highlight) Pal.Primary else Color(0xFF4A5563), shape)
+            .drawWithContent { drawContent()
+                val y = 2.5.dp.toPx(); drawLine(Color.White.copy(alpha = 0.16f), androidx.compose.ui.geometry.Offset(6.dp.toPx(), y), androidx.compose.ui.geometry.Offset(size.width - 2.dp.toPx(), y), 1.dp.toPx())
+                drawRect(Color.Black.copy(alpha = 0.35f), androidx.compose.ui.geometry.Offset(3.dp.toPx(), size.height - 4.dp.toPx()), androidx.compose.ui.geometry.Size((size.width - 8.dp.toPx()).coerceAtLeast(0f), 1.5.dp.toPx())) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (accentKey) Pal.Primary else Color(0xFFE6EBF2), fontFamily = KeyFont,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, fontSize = if (k.label.length > 2) 14.sp else 21.sp)
+        if (down && k.preview) {
+            val lift = with(androidx.compose.ui.platform.LocalDensity.current) { (h + 8.dp).roundToPx() }
+            val pop = CutCornerShape(7.dp, 7.dp)
+            Popup(alignment = Alignment.Center, offset = IntOffset(0, -lift), properties = PopupProperties(focusable = false, clippingEnabled = false)) {
+                Box(Modifier.testTag("key-preview").size(width = 54.dp, height = 64.dp)
+                    .background(Color(0xFF1A222C), pop).border(1.dp, visr, pop), contentAlignment = Alignment.Center) {
+                    Text(label, color = Color.White, fontFamily = KeyFont, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontSize = 32.sp)
                 }
             }
         }

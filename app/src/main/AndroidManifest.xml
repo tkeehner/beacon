@@ -23,6 +23,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 0.1.16 remote updater: hands a verified Beacon APK (same package, same signing key, newer version) to Android's
+         own install prompt. You tap Install every time; the "Install unknown apps" switch is yours to turn on. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <queries>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
@@ -97,7 +100,7 @@
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
         </service>
-        <!-- Hang-up helper: scoped to ai.x.grok.bot; idle unless the red button armed it (see HangupService). -->
+        <!-- Hang-up helper: scoped to ai.x.grok.bot; 0.1.20: the on-screen red button is gone, so nothing arms it; kept for a future hang-up trigger (see HangupService). -->
         <service
             android:name=".HangupService"
             android:exported="false"
@@ -149,5 +152,15 @@
                 <data android:scheme="phonelink" android:host="pair" />
             </intent-filter>
         </activity>
+        <!-- 0.1.16 remote updater (see update/Updater.kt). Not exported. -->
+        <activity
+            android:name=".update.UpdateInstallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <receiver
+            android:name=".update.InstallResultReceiver"
+            android:exported="false" />
     </application>
 </manifest>

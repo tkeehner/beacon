@@ -150,11 +150,15 @@ object Panels {
             box.addView(r)
         }
         section("Look")
-        seg("Theme", listOf("matrix" to "Matrix", "neon" to "Neon City"), p.theme) { p.theme = it; h.applyLook() }
+        seg("Theme", listOf("matrix" to "Matrix", "neon" to "Neon City", "odst" to "ODST"), p.theme) { p.theme = it; h.applyLook() }
         seg("App icons", listOf("ABSTRACT" to "Abstract", "LETTERS" to "Letters"), p.icons.name, "Abstract: original motifs in this theme's colors. Letters: plain tiles.") { p.icons = IconStyle.valueOf(it); h.applyLook() }
         if (p.neon) onOff("Glitch", p.glitch) { p.glitch = it; h.applyLook() }
+        if (p.odst) {
+            seg("VISR night mode", listOf("auto" to "Auto", "on" to "Always", "off" to "Off"), p.visr, "Auto: outline vision after dark (from the forecast, else 7p to 6a).") { p.visr = it; h.applyLook() }
+            onOff("Civic chime", p.chime, "The 4-note chime before each notice. Silent anyway on vibrate, silent and during calls.") { p.chime = it }
+        }
         section("Wallpaper (preview above)")
-        seg("Style", listOf("auto" to "Auto", "glyphs" to "Rain", "streaks" to "Streaks", "solid" to "Solid", "off" to "Off"), p.wpStyle) { p.wpStyle = it; h.stage.rebuild() }
+        seg("Style", listOf("auto" to "Auto", "glyphs" to "Rain", "streaks" to "Streaks", "city" to "City", "solid" to "Solid", "off" to "Off"), p.wpStyle) { p.wpStyle = it; h.stage.rebuild() }
         seg("Glyphs", listOf("binary" to "0 1", "kana" to "Kana-ish", "hex" to "Hex"), p.wpGlyphs) { p.wpGlyphs = it; h.stage.rebuild() }
         seg("Density", listOf("0.6" to "Low", "1.0" to "Medium", "1.5" to "High"), "%.1f".format(java.util.Locale.US, p.wpDensity)) { p.wpDensity = it.toFloat(); h.stage.rebuild() }
         seg("Speed", listOf("0.5" to "Slow", "1.0" to "Normal", "1.8" to "Fast"), "%.1f".format(java.util.Locale.US, p.wpSpeed)) { p.wpSpeed = it.toFloat(); h.stage.rebuild() }
@@ -164,6 +168,16 @@ object Panels {
         onOff("Flick the orb", p.quickOn, "Flick from the orb to quick-launch. Holding still opens the ring.") { p.quickOn = it }
         if (p.quickOn) for (dir in Quick.DIRS) button("Flick ${dir}", h.quickLabel(p.quick(dir)), false) { pickQuick(h, dir) }
         seg("Weather location", listOf("1" to "Where I am", "0" to "Default location"), if (p.wxGps) "1" else "0") { p.wxGps = it == "1"; if (it == "1" && !h.has(Manifest.permission.ACCESS_COARSE_LOCATION)) h.requestPerm(Manifest.permission.ACCESS_COARSE_LOCATION); p.wxCache = "" }
+        section("Companion")
+        onOff("Orb companion", p.companion, "Prime has a little life of its own: activities now and then, reactions, two-finger poke and pet, tilt the phone to roll it.") { p.companion = it; if (!it) h.stage.buddy.clearBubble(); h.stage.stop(); h.stage.start() }
+        if (p.companion) {
+            onOff("Orb chat bubbles", p.chat, "Now and then a short line in its own voice: greetings, study / room / car nudges, jokes. At most 6 a day, never 11:30p to 7a or while busy. Tap one to message Prime; swipe one away to mute that kind for today.") { p.chat = it; if (!it) h.stage.buddy.clearBubble() }
+            if (p.chat) {
+                button("What Prime calls you", p.buddyName.ifBlank { "no name" }, false) { textDialog(h, "What Prime calls you", "first name or nickname (optional)", p.buddyName) { p.buddyName = it; settings(h) } }
+                button("Study progress (for study nudges)", if (p.studyCourse.isBlank() && p.studyModule.isBlank()) "not set" else "course ${p.studyCourse} · module ${p.studyModule}", false) {
+                    textDialog(h, "Course", "course number (optional)", p.studyCourse) { c -> p.studyCourse = c; textDialog(h, "Module", "module number (optional)", p.studyModule) { m -> p.studyModule = m; settings(h) } } }
+            }
+        }
         section("Prime")
         onOff("Hey Prime", p.wake, "Offline wake word. Listens only while the screen is on and unlocked.") { p.wake = it; WakeService.sync(h) }
         onOff("Battery saver", p.saver, "Lighter orb, 30 fps, and Hey Prime listens only while the home screen is showing.") { p.saver = it; h.applyLook(); WakeService.sync(h) }
@@ -175,10 +189,12 @@ object Panels {
         permRows(h, ::button)
         section("Phone Link")
         phoneLinkRows(h, pal, box, ::button) { settings(h) }
+        section("Updates")
+        updateRows(h, pal, box, ::button) { settings(h) }
         section("System")
         button("Default home app", "open", false) { h.openSys(Settings.ACTION_HOME_SETTINGS) }
         button("Restart onboarding", "show", false) { onboarding(h) }
-        box.addView(h.text(pal, "Beacon 0.1.14 · open-source build (original abstract icons only).", 10f, pal.dim, lines = 4).apply { setPadding(0, h.dpi(18f), 0, 0) })
+        box.addView(h.text(pal, "Beacon 0.1.20 · open-source build (original abstract icons only).", 10f, pal.dim, lines = 4).apply { setPadding(0, h.dpi(18f), 0, 0) })
         val sv = ScrollView(h).apply { addView(box); isVerticalScrollBarEnabled = false; background = GradientDrawable().apply { setColor(Color.argb(0xF4, Color.red(pal.s1), Color.green(pal.s1), Color.blue(pal.s1))); cornerRadii = FloatArray(8) { if (it < 4) h.dp(22f) else 0f }; setStroke(h.dpi(1f), pal.line) } }
         val wasOpen = h.panelIs("settings"); val y = (h.currentPanel() as? ScrollView)?.scrollY ?: 0
         val lpv = FrameLayout.LayoutParams(MATCH, (h.stage.height * 0.62f).toInt(), Gravity.BOTTOM)
@@ -235,6 +251,49 @@ object Panels {
                 .setNeutralButton("Clear") { _, _ -> pl.clearAudit(); h.toast("Audit log cleared") }.show()
         }
     }
+    // ---------- 0.1.16 remote updates (PC -> your relay -> phone; you tap Install on Android's prompt) ----------
+    private fun updateRows(h: HomeActivity, pal: Pal, box: LinearLayout, button: (String, String, Boolean, () -> Unit) -> Unit, refresh: () -> Unit) {
+        val U = com.tyler.primelauncher.update.Updater; val st = com.tyler.primelauncher.update.UpdateStore(h)
+        val ver = runCatching { h.packageManager.getPackageInfo(h.packageName, 0).versionName }.getOrNull() ?: "?"
+        val ready = runCatching { U.ready(h) }.getOrNull()
+        val line = "Beacon $ver · " + (if (!st.paired) "not paired" else "paired with ${st.pcName} · " + (if (st.enabled) U.state else "off")) + (if (st.last.isNotBlank()) " · last: ${st.last}" else "")
+        box.addView(h.text(pal, line, 12f, pal.dim, lines = 3).apply { setPadding(0, h.dpi(4f), 0, h.dpi(4f)) })
+        if (ready != null) button("Install Beacon ${ready.info.versionName}", "install", true) {
+            runCatching { h.startActivity(android.content.Intent(h, com.tyler.primelauncher.update.UpdateInstallActivity::class.java)) } }
+        if (st.paired) button("Remote updates", if (st.enabled) "on" else "off", st.enabled) { st.enabled = !st.enabled; U.ensure(h); box.postDelayed({ refresh() }, 300) }
+        button(if (st.paired) "Re-pair PC for updates" else "Pair PC for updates", "open", false) { updatePairDialog(h, st, refresh) }
+        if (st.paired) button("Unpair updates", "unpair", false) {
+            AlertDialog.Builder(h).setTitle("Unpair remote updates?").setMessage("Stops waiting for updates and erases the update link key on this phone.")
+                .setPositiveButton("Unpair") { _, _ -> U.stop(); st.clear(); refresh() }.setNegativeButton("Cancel", null).show()
+        }
+    }
+    private fun updatePairDialog(h: HomeActivity, st: com.tyler.primelauncher.update.UpdateStore, refresh: () -> Unit) {
+        val pal = h.pal
+        val key = runCatching { st.phoneKey() }.getOrNull(); val fp = runCatching { st.phoneFingerprint() }.getOrNull()
+        if (key == null) { h.toast("Couldn't read the phone key"); return }
+        val keyView = h.text(pal, key, 10f, pal.body, lines = 12).apply { setTextIsSelectable(true); contentDescription = "beacon phone key" }
+        val code = EditText(h).apply { hint = "paste the PC's BCN1. pairing code"; textSize = 12f; minLines = 2; maxLines = 5
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS; importantForAutofill = android.view.View.IMPORTANT_FOR_AUTOFILL_NO
+            contentDescription = "beacon pairing code" }
+        val col = LinearLayout(h).apply { orientation = LinearLayout.VERTICAL; setPadding(h.dpi(20f), h.dpi(8f), h.dpi(20f), 0)
+            addView(h.text(pal, "1. On the PC run: beacon-update pair <this phone key>  (fingerprint $fp).\n2. Paste the code it prints below. The code is sealed to this phone, so only this phone can open it.", 12f, pal.dim, lines = 6))
+            addView(keyView); addView(code) }
+        val sv = ScrollView(h).apply { addView(col) }
+        val dlg = AlertDialog.Builder(h).setTitle("Pair PC for updates").setView(sv).setPositiveButton("Pair", null)
+            .setNeutralButton("Copy key") { _, _ -> h.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("Beacon phone key", key)); h.toast("Phone key copied") }
+            .setNegativeButton("Cancel", null).show()
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            runCatching { com.tyler.primelauncher.update.Updater.pairWith(h, code.text.toString()) }
+                .onSuccess { dlg.dismiss(); h.toast("Paired for remote updates"); refresh() }
+                .onFailure { h.toast((it as? com.tyler.primelauncher.update.UpdateError)?.message ?: "Couldn't pair") }
+        }
+    }
+    /** One-line text prompt for the companion settings (stored on this phone only). */
+    private fun textDialog(h: HomeActivity, title: String, hint: String, cur: String, done: (String) -> Unit) {
+        val e = EditText(h).apply { this.hint = hint; setText(cur); setSingleLine(true); textSize = 14f; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS }
+        val col = LinearLayout(h).apply { orientation = LinearLayout.VERTICAL; setPadding(h.dpi(20f), h.dpi(8f), h.dpi(20f), 0); addView(e) }
+        AlertDialog.Builder(h).setTitle(title).setView(col).setPositiveButton("Save") { _, _ -> done(e.text.toString()) }.setNegativeButton("Cancel", null).show()
+    }
     /** Agent connector (any agent with an HTTPS webhook): URL, auth and payload template. The key is write-only: never shown back. */
     private fun primeHookDialog(h: HomeActivity, hook: HookStore, refresh: () -> Unit) {
         val pal = h.pal
@@ -279,7 +338,6 @@ object Panels {
         val post = h.has(Manifest.permission.POST_NOTIFICATIONS); button("Notifications (listening notice)", if (post) "on" else "grant", post) { h.requestPerm(Manifest.permission.POST_NOTIFICATIONS) }
         val loc = h.has(Manifest.permission.ACCESS_COARSE_LOCATION); button("Location (weather)", if (loc) "on" else "grant", loc) { h.requestPerm(Manifest.permission.ACCESS_COARSE_LOCATION) }
         val ov = Settings.canDrawOverlays(h); button("Display over other apps (optional)", if (ov) "on" else "grant", ov) { h.openSys(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true) }
-        val hu = HangupService.enabled(h); button("Hang-up button (Accessibility, Grok Bot only)", if (hu) "on" else "grant", hu) { h.openSys(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
     }
 
     // ---------- first run ----------
@@ -300,7 +358,6 @@ object Panels {
         step("Notifications", "Android shows a small notice while the wake word is on.", h.has(Manifest.permission.POST_NOTIFICATIONS)) { h.requestPerm(Manifest.permission.POST_NOTIFICATIONS) }
         step("Location", "Weather where you are. Without it, the bar shows a default location.", h.has(Manifest.permission.ACCESS_COARSE_LOCATION)) { h.requestPerm(Manifest.permission.ACCESS_COARSE_LOCATION) }
         step("Display over other apps (optional)", "Lets \u201cHey Prime\u201d open Grok Bot while another app is in front. Without it you get a tap-to-talk alert.", Settings.canDrawOverlays(h)) { h.openSys(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true) }
-        step("Hang-up button (optional)", "Lets the red button end your Grok Bot call. Accessibility > Installed apps > Prime hang-up button > On. It only sees Grok Bot and only taps its End call button.", HangupService.enabled(h)) { h.openSys(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
         step("Make it your Home app", "Settings > Apps > Default apps > Home app > Beacon. Switch back the same way.", h.isDefaultHome()) { h.openSys(Settings.ACTION_HOME_SETTINGS) }
         box.addView(h.text(pal, pal.up("Done"), 15f, pal.bg, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, h.dpi(14f), 0, h.dpi(14f)); background = pal.chip(h, true); setOnClickListener { h.prefs.onboarded = true; h.closePanel() } },
             LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = h.dpi(8f) })

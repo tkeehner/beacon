@@ -17,10 +17,10 @@ android {
         applicationId = "com.tyler.primelauncher"
         minSdk = 33 // Android 13+
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.1.14"
-        // arm64 for phones; x86_64 so the same APK can be smoke-tested on an emulator.
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        versionCode = 21
+        versionName = "0.1.20"
+        // Release APKs carry arm64-v8a only (~10 MB smaller). Build with -Pemu to add x86_64 for an emulator.
+        ndk { abiFilters += if (project.hasProperty("emu")) listOf("arm64-v8a", "x86_64") else listOf("arm64-v8a") }
     }
     signingConfigs {
         if (releaseStore != null) create("release") {
@@ -45,7 +45,8 @@ android {
     testOptions { unitTests.isReturnDefaultValues = true; unitTests.isIncludeAndroidResources = true; unitTests.all { it.forkEvery = 1 } }
     packaging { jniLibs { useLegacyPackaging = false } }
     lint { abortOnError = true; checkReleaseBuilds = true; disable += listOf("MissingTranslation") }
-    androidResources { noCompress += listOf("mdl", "fst", "int", "conf", "mat", "dubm", "ie", "stats") }
+    // 0.1.16: the Vosk model is no longer stored uncompressed. ModelInstaller copies it out with assets.open() (a stream,
+    // which works for compressed assets) once per app version, so the APK shrinks by ~30 MB with the same model files.
 }
 dependencies {
     implementation("androidx.core:core:1.15.0")

@@ -12,20 +12,22 @@ Beacon replaces the stock home screen with a single living character: an orb tha
   - *Curious when idle:* eye darts, glances, perk-ups, and fidgets on randomized timers.
   - *Intense on events:* it bounces, leans, and flares its glow for notifications, wake words, and "thinking".
   - *Moody by time of day:* livelier in the morning, sleepy at night, and asleep with a dimmed glow when the screen is off.
-- **Two themes.** *Matrix* has green code-rain and solid glyph icons. *Neon City* has cyan and magenta outlines, an optional glitch effect, and a waveform call halo.
-- **Gesture home.** Tap the orb to open your assistant. Hold it to open a ring of pinned apps. Flick it for quick actions you choose (camera, torch, and so on). Swipe up for the app drawer, swipe down for search, and long-press the background for settings.
+- **Orb companion.** Each theme gives the orb its own personality: short activities, idle beats every 4 to 6 seconds (about a third of them full activities), reactions to a two-finger poke or pet, tilt-to-roll, and occasional chat bubbles with daily caps and quiet hours. Everything runs locally.
+- **Three themes.** *Matrix* has green code-rain and solid glyph icons. *Neon City* has cyan and magenta outlines, an optional glitch effect, and a waveform call halo. *ODST* is an eyes-first civic face with amber public-address panels, a rainy city backdrop, and an optional VISR-style night outline mode.
+- **Gesture home.** Tap the orb to start your assistant through Android's own assist session (the same path as holding Home), so the full assistant app doesn't take over the screen. This needs your agent app set as the default digital assistant (see [Build](#build)). Hold it to open a ring of pinned apps. Flick it for quick actions you choose (camera, torch, and so on). Swipe up for the app drawer, swipe down for search, and long-press the background for settings.
 - **Notification bubbles.** New notifications pop out of the orb. Tap one to open it or swipe it away to clear it.
 - **Offline voice wake word.** On-device speech recognition with [Vosk](https://alphacephei.com/vosk/) listens for a wake word only while the screen is on and unlocked. No audio leaves the phone.
 - **Built-in themed keyboard** for the home "message" box, with autocorrect, a word engine, and an emoji panel.
 - **Weather bar** using [Open-Meteo](https://open-meteo.com/). No API key is needed.
 - **Works with any agent.** A swappable [agent connector](#connectors--use-with-any-agent) lets the home message box talk to any agentic system that accepts an HTTPS webhook. You configure the endpoint, auth, and payload. No agent is built in.
+- **Optional remote updates** from your own PC through a relay you run. The phone only offers an update that is the same app, signed with the same key, and newer, and Android's own Install prompt always asks you first.
 - **Battery saver and Reduce motion** modes.
 
 ## Tech
 
 - **Kotlin** and the Android SDK (min SDK 33, target SDK 35). The launcher uses plain Views and the keyboard uses Jetpack Compose.
 - **Custom Canvas animation engine** (`Orb.kt`, `Personality.kt`, `Rain.kt`, `StageView.kt`). It runs to a per-frame performance budget that the tests enforce.
-- **Unit-tested logic.** About 170 JVM/Robolectric tests cover the orb personality, gestures, ring layout, wake-word state machine, keyboard engine, webhook sealing, and the companion-link policy.
+- **Unit-tested logic.** About 240 JVM/Robolectric tests cover the orb personality, gestures, ring layout, wake-word state machine, keyboard engine, webhook sealing, and the companion-link policy.
 - **Security-minded design.**
   - Secrets are sealed with Android Keystore (AES-GCM, plus RSA-OAEP for one-time imports).
   - `allowBackup=false`.
@@ -40,6 +42,7 @@ Beacon replaces the stock home screen with a single living character: an orb tha
 |-------|------|
 | **Matrix** | Green-on-black code rain, solid glyph icons, and sound-wave bars during calls |
 | **Neon City** | Cyan and magenta outlines, an optional glitch effect, and a waveform ring during calls |
+| **ODST** | A sage-green eyes-first face with a HUD, amber public-address panels with an original 4-note chime, a rainy night skyline, and an optional night outline mode |
 
 Wallpaper style, glyph set, density, speed, and color are all adjustable in Settings.
 
@@ -80,6 +83,8 @@ export BEACON_KEY_PASSWORD=...
 If neither is present, `assembleRelease` produces an unsigned APK.
 
 Install the APK with `adb install -r app/build/outputs/apk/release/app-release.apk`. Then make Beacon your launcher in **Settings > Apps > Default apps > Home app**. The stock launcher stays installed, so you can switch back the same way.
+
+**Required for voice calls:** set your agent app (for example Grok Bot) as the phone's default digital assistant in **Settings > Apps > Default apps > Digital assistant app**. Tapping the orb and saying "Hey Prime" start the call through Android's System assist APIs, which only open whatever app holds that slot. If no assistant is set, or a different one is, the call won't start in your agent app.
 
 ## Connectors / use with any agent
 
@@ -141,6 +146,26 @@ Nothing in this repo points at any real server. Set your own values.
 
 The connector covers messaging. The orb's *app* shortcuts still target one assistant app: tapping the orb opens it, the call halo watches it, and the optional hang-up helper is scoped to it. That app is set by the `Grok.PKG` constant and `res/xml/hangup_service.xml`. To use a different assistant app, change both and rebuild. Making this a runtime setting is on the roadmap.
 
+### Remote updates (optional)
+
+Beacon can receive a new APK from your PC while the phone is away from home. It reuses the line protocol of the Emit relay (`msms-relay`, a server **you** run) in its own room, and the relay only forwards AES-256-GCM ciphertext.
+
+1. On the phone, open **Settings > Updates > Pair PC for updates** and copy the phone key.
+2. On the PC, run `tools/beacon-pc/beacon-update.bat pair <phone key>` (or `python tools/beacon-pc/beacon_update.py pair ...`). It prints a `BCN1.` pairing code that is encrypted to that phone's Keystore key. The code is generated at pairing time from your own relay settings; none ship in this repo.
+3. Paste the code into the dialog and tap **Pair**.
+4. Push a build with `beacon-update push app-release.apk`. The phone verifies the package name, signing certificate, and version, then posts a notification. Tap it, then tap Install on Android's prompt.
+
+The PC tool needs Python 3.9+ with `cryptography`, and reads the relay host, certificate pin, and token from the Emit PC companion's config. On Windows the local pairing key is protected with DPAPI. The phone side is in `app/src/main/java/.../update/`.
+
+## Changelog
+
+- **0.1.20:** The system assist session is the only way a call starts. The on-screen hang-up button is gone in every theme; end the call from the assistant's own overlay.
+- **0.1.19:** Experimental call-launch methods. The orb heads home as soon as the call notification appears.
+- **0.1.18:** The ODST face is the same size as the other orbs. Idle beats run every 4 to 6 seconds in all themes, mixing micro-animations with full activities.
+- **0.1.17:** ODST theme. The app-nudge trail and highlight box over the ring are gone in all themes.
+- **0.1.16:** Optional remote updates from a paired PC. Release APKs are arm64-only (`-Pemu` adds x86_64), and the Vosk model is stored compressed.
+- **0.1.15:** Orb companion: per-theme personalities, activities, chat bubbles, poke, pet, and tilt.
+
 ## Permissions
 
 Beacon asks for each permission only when the feature that needs it is turned on:
@@ -150,6 +175,7 @@ Beacon asks for each permission only when the feature that needs it is turned on
 - **Microphone:** used for the wake word only.
 - **Coarse location:** used for weather. Without it, weather falls back to a default location.
 - **Display over other apps:** optional.
+- **Install unknown apps:** only for the optional remote updater. You turn it on yourself, and every install still goes through Android's prompt.
 - **Accessibility services:** used for the optional hang-up helper and bridge control. These are off until you enable them.
 
 ## License
@@ -163,4 +189,4 @@ Beacon asks for each permission only when the feature that needs it is turned on
 - **Emoji data** (`app/src/main/assets/emoji.tsv`): generated from Unicode `emoji-test.txt` (Emoji 14.0), Copyright © Unicode, Inc., Unicode License v3. See `app/src/main/assets/licenses/Unicode-License-v3.txt`.
 - **JetBrains Mono and Oxanium fonts**: SIL Open Font License 1.1. See `app/src/main/assets/licenses/`.
 
-"Grok" and other app names mentioned in the code belong to their respective owners. No third-party logos are included.
+"Grok" and other app names mentioned in the code belong to their respective owners. No third-party logos are included. The ODST theme is an original fan-inspired skin; its art, chime, and text are original, and no game assets, audio, or logos are included.
