@@ -71,7 +71,7 @@ class WeatherTilesTest {
         RuntimeEnvironment.setFontScale(fontScale)
         Apps.setForTest(pkgs.map { AppEntry(it.first, it.second, ComponentName(it.first, "${it.first}.Main"), Process.myUserHandle()) }, emptyMap())
         val app = RuntimeEnvironment.getApplication(); app.getSharedPreferences("prime", 0).edit().putBoolean("onboarded", true).putString("theme", theme).putBoolean("companion", true).commit()
-        val w = Wx.parseForecast(JSONObject(hourly), "Here", 0.0, 0.0, true, System.currentTimeMillis())
+        val w = Wx.parseForecast(JSONObject(hourly), "Here", 0.0, 0.0, true, now) // fixed clock: the fixture only covers 06:00-15:00
         val shifted = w.copy(fetched = System.currentTimeMillis(), hours = (0 until 7).map { i -> WxHour(System.currentTimeMillis() - 600_000L + i * 3_600_000L, (8 + i) % 24, 54 + i, w.hours[i].code, true) })
         Prefs(app).wxCache = shifted.toJson(); Prefs(app).wxGps = false // explicit saved spot: no location prompt in the test
         val ctl = Robolectric.buildActivity(HomeActivity::class.java).create(); val h = ctl.get(); h.stage.manualFrames = true; ctl.start().resume().visible()
@@ -108,7 +108,7 @@ class WeatherTilesTest {
         RuntimeEnvironment.setFontScale(fontScale)
         Apps.setForTest(pkgs.map { AppEntry(it.first, it.second, ComponentName(it.first, "${it.first}.Main"), Process.myUserHandle()) }, emptyMap())
         val app = RuntimeEnvironment.getApplication(); app.getSharedPreferences("prime", 0).edit().putBoolean("onboarded", true).putString("theme", theme).putBoolean("companion", true).commit()
-        val w = Wx.parseForecast(JSONObject(hourly), "Here", 0.0, 0.0, true, System.currentTimeMillis())
+        val w = Wx.parseForecast(JSONObject(hourly), "Here", 0.0, 0.0, true, now) // fixed clock: the fixture only covers 06:00-15:00
         Prefs(app).wxCache = w.copy(fetched = System.currentTimeMillis(), hours = (0 until 7).map { i -> WxHour(System.currentTimeMillis() - 600_000L + i * 3_600_000L, (8 + i) % 24, 46 + i * 5, w.hours[i].code, true) }).toJson(); Prefs(app).wxGps = false
         val ctl = Robolectric.buildActivity(HomeActivity::class.java).create(); val h = ctl.get(); h.stage.manualFrames = true; ctl.start().resume().visible()
         val root = h.window.decorView; fun lay() { root.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(2400, View.MeasureSpec.EXACTLY)); root.layout(0, 0, 1080, 2400) }

@@ -86,10 +86,10 @@ class BeatsTest {
         assertNotNull(Scheduler.beatBubble(back, pool, sctx(12 * 3600L + 90), 0.0, 0.0))
     }
     @Test fun reminderBubblesKeepTheirCooldowns() {
-        val study = PoolItem("study", Kind.BUB, 1.0, 240, reminder = true); val joke = PoolItem("joke", Kind.BUB, 1.0, 240); val st = SchedState()
-        assertEquals("study", Scheduler.beatBubble(st, listOf(study, joke), sctx(12 * 3600L), 0.0, 0.0)?.id)
-        assertEquals("joke", Scheduler.beatBubble(st, listOf(study, joke), sctx(12 * 3600L + 100), 0.0, 0.0)?.id)
-        assertNull("study cooling, joke can't repeat back to back", Scheduler.beatBubble(st, listOf(study, joke), sctx(12 * 3600L + 200), 0.0, 0.0))
+        val brk = PoolItem("break", Kind.BUB, 1.0, 240, reminder = true); val joke = PoolItem("joke", Kind.BUB, 1.0, 240); val st = SchedState()
+        assertEquals("break", Scheduler.beatBubble(st, listOf(brk, joke), sctx(12 * 3600L), 0.0, 0.0)?.id)
+        assertEquals("joke", Scheduler.beatBubble(st, listOf(brk, joke), sctx(12 * 3600L + 100), 0.0, 0.0)?.id)
+        assertNull("break cooling, joke can't repeat back to back", Scheduler.beatBubble(st, listOf(brk, joke), sctx(12 * 3600L + 200), 0.0, 0.0))
         assertEquals("joke ignores its 240-min cooldown in beats", "joke", Scheduler.beatBubble(st, listOf(joke, PoolItem("m", Kind.BUB, 1.0, 0)), sctx(12 * 3600L + 300), 0.0, 0.0)?.let { Scheduler.beatBubble(st, listOf(joke), sctx(12 * 3600L + 400), 0.0, 0.0)?.id })
     }
 }

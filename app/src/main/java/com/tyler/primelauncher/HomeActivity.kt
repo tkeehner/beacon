@@ -78,7 +78,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setDecorFitsSystemWindows(false)
-        prefs = Prefs(this); pal = Pal(prefs.neon, prefs.odst); IconArt.load(this)
+        prefs = Prefs(this); pal = Pal(prefs.neon, prefs.odst, prefs.holiday); IconArt.load(this)
         root = FrameLayout(this); stage = StageView(this, prefs, this); root.addView(stage, FrameLayout.LayoutParams(MATCH, MATCH))
         brain = CompanionBrain(this, prefs, stage, this); stage.buddy.listener = brain
         overlay = FrameLayout(this); root.addView(overlay, FrameLayout.LayoutParams(MATCH, MATCH))
@@ -88,6 +88,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         setContentView(root)
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) { override fun handleOnBackPressed() = back() })
         Call.onChange = { renderCall(); WakeService.sync(this) }
+        ThemeSync.listener = { main.post { if (!isFinishing) applyLook() } } // 0.1.27: Emit switched the theme
         stage.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or2, ob -> if (r - l != or2 - ol || b - t != ob - ot) main.post { buildOverlay() } }
         root.setOnApplyWindowInsetsListener { _, ins ->
             val sb = ins.getInsets(WindowInsets.Type.systemBars()); val ime = ins.getInsets(WindowInsets.Type.ime())
@@ -120,7 +121,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     override fun onResume() {
         super.onResume(); PrimeApp.homeVisible = true; prefs.homeVisits = prefs.homeVisits + 1; HookImport.poke(this)
         registerReceiver(battRx, IntentFilter().apply { addAction(Intent.ACTION_BATTERY_CHANGED); addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED) })
-        stage.start(); val locked = keyguardLocked(); val act = wakeGate.resumed(SystemClock.elapsedRealtime(), locked)
+        stage.start(); stage.holidayHomeOpen(); val locked = keyguardLocked(); val act = wakeGate.resumed(SystemClock.elapsedRealtime(), locked)
         // Self-heal: the gate says nothing to do and nothing is locked, yet Prime is still asleep (a missed broadcast) -> wake it.
         applyWake(if (act == WakeGate.Act.NONE && !locked && !wakeGate.asleep && stage.ready && stage.orb.sleep.asleep) WakeGate.Act.WAKE else act); WakeService.sync(this); reloadApps(); refreshWx(false, Weather.RESUME_MS); onNotesChanged(); Call.homeBack(this); Call.poll(this); renderCall()
         hint.visibility = if (prefs.homeVisits <= 5) View.VISIBLE else View.GONE
@@ -137,7 +138,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     /** Back closes the keyboard, then panels; the home screen itself has nowhere to go back to. */
     fun back() { when { keys.open -> keys.hide(); panel != null -> closePanel(); tray != null -> closeTray(); stage.ringOpen -> stage.closeRing(); else -> {} } }
 
-    override fun onDestroy() { runCatching { unregisterReceiver(lockRx) }; super.onDestroy() }
+    override fun onDestroy() { runCatching { unregisterReceiver(lockRx) }; if (ThemeSync.listener != null) ThemeSync.listener = null; super.onDestroy() }
 
     // ---------- sleep on lock, wake on unlock ----------
     private val wakeGate = WakeGate()
@@ -197,7 +198,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         val reopen = this::keys.isInitialized && keys.open && panel == null // a rebuild must never drop an open keyboard
         val keepSel = if (this::pmsg.isInitialized) pmsg.selectionStart else -1
         if (this::pmsg.isInitialized) pmsg.onFocusChangeListener = null // removing the old box must not read as "focus left"
-        overlay.removeAllViews(); pal = Pal(prefs.neon, prefs.odst); val ctx = this
+        overlay.removeAllViews(); pal = Pal(prefs.neon, prefs.odst, prefs.holiday); val ctx = this
         val widget = col().apply { setPadding(dpi(24f), dpi(topIn + 18f), dpi(24f), 0) }
         tTime = text(pal, "", if (prefs.neon || prefs.odst) 64f else 58f, pal.hi, bold = true); tTime.setShadowLayer(dp(10f), 0f, 0f, pal.hi)
         tDate = text(pal, "", 14f, pal.body); tDate.setPadding(0, dpi(4f), 0, dpi(6f))
@@ -457,7 +458,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
 
     // ---------- tiles ----------
     fun tile(pkg: String, label: String, sizeDp: Float): Bitmap { val px = dpi(sizeDp); val key = "$pkg|${prefs.icons}|${prefs.theme}|$px"
-        return tiles.get(key) ?: IconArt.tile(pkg, label, prefs.icons, prefs.neon, px, stage.d, prefs.odst).also { tiles.put(key, it) } }
+        return tiles.get(key) ?: IconArt.tile(pkg, label, prefs.icons, prefs.neon, px, stage.d, prefs.odst, prefs.holiday).also { tiles.put(key, it) } }
 
     // ---------- panels ----------
     fun showPanel(kind: String, v: View, lpv: FrameLayout.LayoutParams = FrameLayout.LayoutParams(MATCH, MATCH), fromBottom: Boolean = true) {
@@ -483,7 +484,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     fun typedInSearch(e: EditText) = typed(e)
 
     /** Theme / icon / wallpaper changes: rebuild what depends on them. */
-    fun applyLook() { pal = Pal(prefs.neon, prefs.odst); keys.theme(prefs.theme); tiles.evictAll(); stage.rebuild(); buildOverlay(); stage.dimOverlay = 0f }
+    fun applyLook() { pal = Pal(prefs.neon, prefs.odst, prefs.holiday); keys.theme(prefs.theme); tiles.evictAll(); stage.rebuild(); buildOverlay(); stage.dimOverlay = 0f }
 
     fun hideKeyboard(v: View) { getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(v.windowToken, 0) }
     fun showKeyboard(e: EditText) { e.requestFocus(); main.postDelayed({ getSystemService(InputMethodManager::class.java).showSoftInput(e, InputMethodManager.SHOW_IMPLICIT) }, 120) }

@@ -60,6 +60,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
         ring = host.ringApps()
         orb = Orb(cxOrb(), cy, orbR(), Skin.of(prefs.theme), d, q, buildRing(), prefs.glitch)
         orb.glowOn = !prefs.saver; visrOn = null
+        orb.hol?.let { it.glowOn = !prefs.saver; it.setFace(HolidayCycle.load(prefs.sp)) }
         orb.amp = if (prefs.reduce) 0.5 else 1.0
         if (old != null) { orb.t = old.t; orb.nextBlink = old.t + 1.5; orb.nextGlitch = old.t + 1; orb.mode = old.mode; orb.syncMode(); orb.lively = old.lively; orb.yawny = old.yawny; orb.sleep.copyFrom(old.sleep); old.recycle() }
         else if (sleepPending) orb.sleep.sleepNow()
@@ -99,7 +100,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
 
     private fun makeRain(): Rain {
         val auto = prefs.wpStyle == "auto"; val style = if (auto) (if (prefs.odst) "city" else if (prefs.neon) "streaks" else "glyphs") else prefs.wpStyle
-        val rgb = if (prefs.wpHue >= 0) Rain.hsl(prefs.wpHue) else if (style == "streaks" && prefs.wpHue < 0) 0 else if (prefs.neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt()
+        val rgb = if (prefs.wpHue >= 0) Rain.hsl(prefs.wpHue) else if (style == "streaks" && prefs.wpHue < 0) 0 else if (prefs.holiday) 0xFFFF8C1E.toInt() else if (prefs.neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt()
         return Rain(W, H, cy, d, style, prefs.wpGlyphs, prefs.wpDensity, prefs.wpSpeed, rgb, prefs.neon)
     }
 
@@ -139,7 +140,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
         buddy.step(if (prefs.reduce) dt * 0.5 else dt)
         callK = (callK + if (inCall) dt / 0.6 else -dt / 0.5).coerceIn(0.0, 1.0)
         if (!prefs.reduce) rain?.step(dt.toFloat())
-        visrStep()
+        visrStep(); holidayStep(dt)
         host.onFrame(orb.t)
         if (!suspended) invalidate()
     }
@@ -153,6 +154,20 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
         buddy.drawBubble(cv)
         cv.restore()
     }
+    // ---------- 0.1.27 holiday face cycling ----------
+    private var holVisMs = 0.0; private var holPending = false; private val holRnd = java.util.Random()
+    /** Home opened (onResume): the next resting moment swaps to the next face in the bag. */
+    fun holidayHomeOpen(now: Long = System.currentTimeMillis()) { if (prefs.holiday && HolidayCycle.homeOpenDue(prefs.sp, now)) holPending = true }
+    private fun holidayStep(dt: Double) {
+        val hf = orb.hol ?: return
+        hf.tick(orb.t)
+        if (!suspended && PrimeApp.homeVisible) holVisMs += dt * 1000
+        if (HolidayCycle.timerDue(holVisMs)) holPending = true
+        if (holPending && !hf.swapping && HolidayCycle.canSwap(orb.sleep.e, orb.sleep.asleep, orb.mode, orb.th, inCall || callK > 0.01, !buddy.idleNow, ringOpen || summoned)) {
+            holPending = false; holVisMs = 0.0; HolidayCycle.markSwapped(prefs.sp, System.currentTimeMillis()); buddy.clearBubble(); hf.startSwap(HolidayCycle.next(prefs.sp, holRnd), HolidayCycle.pickSwap(holRnd), orb.t) }
+    }
+    /** Tests / screenshots: force a swap now. */
+    fun holidaySwapNow(kind: HSwap) { val hf = orb.hol ?: return; hf.startSwap(HolidayCycle.next(prefs.sp, holRnd), kind, orb.t) }
     // ---------- 0.1.17 ODST VISR night mode ----------
     private var visrOn: Boolean? = null; private var visrCheckT = -9.0
     /** VISR: Settings Auto (after dark: the forecast's day flag, else 7 pm-6 am) / Always / Off. Auto switches play a little HUD blink. */
@@ -169,7 +184,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     private var chargeKey: FloatArray? = null; private var chargeLin: Shader? = null; private var chargeRad: Shader? = null
     private fun drawCharge(cv: Canvas) {
         val t = orb.t; val plug = t - plugT < 4.0; if (!charging && !plug) return
-        val neon = prefs.neon; val c1 = if (prefs.odst) OdstArt.AMBER else if (neon) 0xFFF7E733.toInt() else 0xFF3DFF7A.toInt(); val c2 = if (prefs.odst) OdstArt.STEEL else if (neon) 0xFF3EE8F0.toInt() else 0xFFE2FFE9.toInt()
+        val neon = prefs.neon; val c1 = if (prefs.holiday) 0xFFFF8C1E.toInt() else if (prefs.odst) OdstArt.AMBER else if (neon) 0xFFF7E733.toInt() else 0xFF3DFF7A.toInt(); val c2 = if (prefs.holiday) 0xFFB57EF0.toInt() else if (prefs.odst) OdstArt.STEEL else if (neon) 0xFF3EE8F0.toInt() else 0xFFE2FFE9.toInt()
         val cx = cxOrb(); val R = orb.radius(); val y0 = H - bottomInset - 2; val y1 = cy + R * 0.92f
         paint.blendMode = BlendMode.PLUS; paint.style = Paint.Style.FILL
         val key = floatArrayOf(y0, cy + orbR() * 0.92f, cx, c1.toFloat()) // fixed endpoint: the breathing radius must not rebuild the shader each frame
@@ -187,7 +202,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     private fun drawNotePulse(cv: Canvas) {
         val k = orb.t - noteT; if (k < 0 || k > 1.3 || prefs.reduce) return
         paint.blendMode = BlendMode.PLUS; paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.6f
-        for (i in 0 until 2) { val kk = k - i * 0.2; if (kk < 0) continue; paint.color = rgbA(if (prefs.odst) OdstArt.AMBER else if (prefs.neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt(), max(0.0, 1 - kk / 1.1) * 0.6)
+        for (i in 0 until 2) { val kk = k - i * 0.2; if (kk < 0) continue; paint.color = rgbA(if (prefs.holiday) 0xFFFF8C1E.toInt() else if (prefs.odst) OdstArt.AMBER else if (prefs.neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt(), max(0.0, 1 - kk / 1.1) * 0.6)
             cv.drawCircle(cxOrb(), cy, orb.radius() * (1.03f + kk.toFloat() * 0.6f), paint) }
         paint.style = Paint.Style.FILL; paint.blendMode = null
     }
@@ -199,7 +214,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     private fun drawCallHalo(cv: Canvas, behind: Boolean) {
         val k = callK * callK * (3 - 2 * callK); if (k < 0.01) return
         val t = orb.t; val R = orb.radius(); val cx = cxOrb(); val neon = prefs.neon; val lv = callLvl.coerceIn(0.0, 1.0)
-        val c1 = if (prefs.odst) OdstArt.AMBER else if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt(); val c2 = if (prefs.odst) OdstArt.STEEL else if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
+        val c1 = if (prefs.holiday) 0xFFFF8C1E.toInt() else if (prefs.odst) OdstArt.AMBER else if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt(); val c2 = if (prefs.holiday) 0xFFB57EF0.toInt() else if (prefs.odst) OdstArt.STEEL else if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
         paint.blendMode = BlendMode.PLUS
         if (behind) { // glow behind the orb
             val g = 0.16 + 0.14 * lv + (if (prefs.reduce) 0.05 * sin(t * 1.4) else 0.0)
@@ -242,7 +257,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
     private fun drawVoiceRings(cv: Canvas) {
         if (callK > 0.5) return // the call halo replaces the plain listening rings
         if (orb.ls < 0.02) return; val R = orb.radius(); paint.blendMode = BlendMode.PLUS; paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.2f
-        for (i in 0 until 3) { val ph = (orb.t * 0.7 + i / 3.0) % 1; val col = if (prefs.odst) (if (i % 2 == 1) OdstArt.STEEL else OdstArt.AMBER) else if (prefs.neon) (if (i % 2 == 1) 0xFF3EE8F0.toInt() else 0xFFFF3D81.toInt()) else 0xFF3DFF7A.toInt()
+        for (i in 0 until 3) { val ph = (orb.t * 0.7 + i / 3.0) % 1; val col = if (prefs.holiday) (if (i % 2 == 1) 0xFFB57EF0.toInt() else 0xFFFF8C1E.toInt()) else if (prefs.odst) (if (i % 2 == 1) OdstArt.STEEL else OdstArt.AMBER) else if (prefs.neon) (if (i % 2 == 1) 0xFF3EE8F0.toInt() else 0xFFFF3D81.toInt()) else 0xFF3DFF7A.toInt()
             paint.color = rgbA(col, orb.ls * (1 - ph) * (0.18 + 0.5 * orb.lvl)); cv.drawCircle(cxOrb(), cy, R * (1.08f + ph.toFloat() * 0.55f), paint) }
         paint.style = Paint.Style.FILL; paint.blendMode = null
     }
@@ -303,7 +318,7 @@ class StageView(ctx: Context, private val prefs: Prefs, private val host: Host) 
                 if (longFired) return true
                 if (onOrb) {
                     val dir = if (prefs.quickOn) Logic.flickDir(dx, dy, ms) else null
-                    when { dir != null -> host.onFlick(dir); !moved -> host.onOrbTap(); else -> {} }
+                    when { dir != null -> host.onFlick(dir); !moved -> if (orb.hol?.swapping != true) host.onOrbTap(); else -> {} }
                 } else if (moved && ms < 700) {
                     if (dy < -60 && kotlin.math.abs(dy) > kotlin.math.abs(dx)) host.onSwipeUp()
                     else if (dy > 60 && kotlin.math.abs(dy) > kotlin.math.abs(dx)) host.onSwipeDown()

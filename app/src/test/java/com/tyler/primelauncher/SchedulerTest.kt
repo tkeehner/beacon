@@ -28,10 +28,10 @@ class SchedulerTest {
     }
 
     @Test fun busyBlocksAndLowBatteryOnlyAllowsReminders() {
-        val pool = listOf(PoolItem("a", Kind.ACT, 1.0, 0), PoolItem("joke", Kind.BUB, 1.0, 0), PoolItem("study", Kind.BUB, 1.0, 0, reminder = true))
+        val pool = listOf(PoolItem("a", Kind.ACT, 1.0, 0), PoolItem("joke", Kind.BUB, 1.0, 0), PoolItem("break", Kind.BUB, 1.0, 0, reminder = true))
         assertNull(Scheduler.tick(SchedState(), pool, ctx(600, busy = true), ACT_R)); assertNull(Scheduler.tick(SchedState(), pool, ctx(600, busy = true), BUB_R))
         assertNull("no activities on low battery", Scheduler.tick(SchedState(), pool, ctx(600, battLow = true), ACT_R))
-        assertEquals("study", Scheduler.tick(SchedState(), pool, ctx(600, battLow = true), BUB_R)?.id)
+        assertEquals("break", Scheduler.tick(SchedState(), pool, ctx(600, battLow = true), BUB_R)?.id)
     }
 
     @Test fun cooldownsAreRespected() {
@@ -76,7 +76,7 @@ class SchedulerTest {
     @Test fun swipeMutesForTheDayAndThreeSwipesHalveWeight() {
         val joke = PoolItem("joke", Kind.BUB, 2.0, 0); val st = SchedState()
         Scheduler.dismiss(st, "joke", ctx(600))
-        assertFalse(Scheduler.canBubble(st, ctx(700), "joke")); assertTrue(Scheduler.canBubble(st, ctx(700), "study"))
+        assertFalse(Scheduler.canBubble(st, ctx(700), "joke")); assertTrue(Scheduler.canBubble(st, ctx(700), "break"))
         assertTrue("unmuted tomorrow", Scheduler.canBubble(st, ctx(700, d = day + 1), "joke"))
         Scheduler.dismiss(st, "joke", ctx(600, d = day + 2)); Scheduler.dismiss(st, "joke", ctx(600, d = day + 3))
         assertEquals(1.0, Scheduler.weight(st, joke), 1e-9)
@@ -118,7 +118,7 @@ class SchedulerTest {
         // persisted state continues the same sequence
         val a = LineBag(12, 5); repeat(7) { a.next() }; val b = LineBag.decode(a.encode(), 12, 5)
         assertEquals(a.next(), b.next()); assertEquals(a.next(), b.next())
-        // a different line count (e.g. study progress set) starts a fresh bag
+        // a different line count (e.g. a line bank edit) starts a fresh bag
         assertEquals(0, LineBag.decode(a.encode(), 7, 5).pos)
         val two = LineBag(2, 1); var p2 = -1; repeat(10) { val i = two.next(); assertNotEquals(p2, i); p2 = i }
     }

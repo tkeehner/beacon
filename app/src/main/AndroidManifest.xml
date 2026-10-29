@@ -27,6 +27,13 @@
          own install prompt. You tap Install every time; the "Install unknown apps" switch is yours to turn on. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- 0.1.27 theme sync with Emit (signed with a different key): each app defines its own signature|knownSigner
+         permission that only the OTHER app's signing cert can hold, and guards its exported receiver with it. -->
+    <permission android:name="com.tyler.primelauncher.permission.THEME_SYNC"
+        android:protectionLevel="signature|knownSigner"
+        android:knownCerts="@array/theme_sync_peer_certs" />
+    <uses-permission android:name="com.tyler.matrixsms.permission.THEME_SYNC" />
+
     <queries>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
         <intent><action android:name="android.media.action.STILL_IMAGE_CAMERA" /></intent>
@@ -66,6 +73,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver android:name=".ThemeSyncReceiver" android:exported="true"
+            android:permission="com.tyler.primelauncher.permission.THEME_SYNC">
+            <intent-filter><action android:name="com.tyler.themesync.SET" /></intent-filter>
+        </receiver>
 
         <activity
             android:name=".TriggerActivity"

@@ -28,7 +28,7 @@ import kotlin.math.sqrt
 /** Prime code-sphere, ported from the simulator's Canvas engine. Works in dp; sprites are rendered at px resolution. */
 enum class Mode { IDLE, THINK, SUMMON, LISTEN, TALK }
 
-class Skin(val body: Int, val head: Int, val accent: Int, val glyphs: String, val eye: Int, val neon: Boolean, val odst: Boolean = false) {
+class Skin(val body: Int, val head: Int, val accent: Int, val glyphs: String, val eye: Int, val neon: Boolean, val odst: Boolean = false, val holiday: Boolean = false) {
     /** Cut corners + condensed upper-case labels (Neon City and ODST). */
     val angular get() = neon || odst
     companion object {
@@ -36,7 +36,9 @@ class Skin(val body: Int, val head: Int, val accent: Int, val glyphs: String, va
         val NEON = Skin(0xFFF7E733.toInt(), 0xFF3EE8F0.toInt(), 0xFFFF3D81.toInt(), "0123456789ABCDEF", 0xFF3EE8F0.toInt(), true)
         /** 0.1.17 ODST: amber comms + steel, the orb is the sage-green eyes-only face (see OdstFace). */
         val ODST = Skin(0xFFFFB23F.toInt(), 0xFFE9EEF5.toInt(), 0xFF8FB8E0.toInt(), "0123456789", 0xFF8FB8E0.toInt(), false, true)
-        fun of(theme: String) = when (theme) { "neon" -> NEON; "odst" -> ODST; else -> MATRIX }
+        /** 0.1.27 holiday: orange / purple; the orb is one of five shaded avatars ([HolidayFace]). */
+        val HOLIDAY = Skin(0xFFFF8C1E.toInt(), 0xFFFFE2C8.toInt(), 0xFFB57EF0.toInt(), "01", 0xFFFFD35A.toInt(), false, false, true)
+        fun of(theme: String) = when (theme) { "neon" -> NEON; "odst" -> ODST; "holiday" -> HOLIDAY; else -> MATRIX }
         /** Orb radius per skin (dp): the ODST face is deliberately small, like the reference. */
         fun radius(theme: String) = when (theme) { "neon" -> 96f; "odst" -> 96f; else -> 102f }
     }
@@ -194,13 +196,13 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
     val odstExpr get() = flip.face
 
     init {
-        val nCols = if (skin.odst) 0 else (64 * quality).roundToInt()
+        val nCols = if (skin.odst || skin.holiday) 0 else (64 * quality).roundToInt()
         for (c in 0 until nCols) {
             val chars = IntArray(nLat) { (rnd.next() * nG).toInt() }; val mask = BooleanArray(nLat) { rnd.next() < 0.8 }
             val nh = 1 + (rnd.next() * 2).toInt(); val heads = DoubleArray(nh) { rnd.next() * nLat * 1.4 - nLat * 0.2 }
             cols.add(Col(c.toDouble() / nCols * PI * 2, 7 + rnd.next() * 9, heads, 6 + rnd.next() * 10, chars, mask, rnd.next()))
         }
-        repeat(if (skin.odst) 0 else (90 * quality).roundToInt()) {
+        repeat(if (skin.odst || skin.holiday) 0 else (90 * quality).roundToInt()) {
             val vert = rnd.next() < 0.6; val a = if (vert) (if (rnd.next() < 0.5) -PI / 2 else PI / 2) + (rnd.next() - 0.5) * 1.3 else rnd.next() * PI * 2
             sparks.add(Spark(a, 1 + (rnd.next() * 3).toInt(), 2 + rnd.next() * 7, rnd.next() * 6.28, (rnd.next() * nG).toInt()))
         }
@@ -344,6 +346,7 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
 
     fun draw(cv: Canvas) {
         if (skin.odst) { drawOdst(cv); return }
+        if (skin.holiday) { drawHoliday(cv); return }
         val R = radius().toDouble(); val n = nLat; val gl = glitching(); val K = skin
         // 0.1.13 lean: one canvas transform for the whole sphere (no per-glyph cost); the app ring below stays put.
         val ps = pose; val pk = (r / 92.0).toFloat()
@@ -481,6 +484,22 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
     }
 
     /** ODST: HUD (stays put), then the face with the shared lean / squash / roll body language, then the ring. */
+    /** 0.1.27 holiday avatar renderer + the face swap (see Holiday.kt). */
+    val hol: HolidayFace? = if (skin.holiday) HolidayFace(dpr) else null
+    private fun drawHoliday(cv: Canvas) {
+        val hf = hol ?: return; val R = radius(); val ps = pose; val pk = (r / 92.0).toFloat()
+        hf.glowOn = glowOn
+        val open = sleep.lid(lid) * (1 + 0.15 * hov + Bold.PERK_EYES * perkLevel()) * (1 - blink) * (1 - 0.55 * th) * (1 - 0.6 * sp) * (1 + ls * (0.18 + 0.35 * lvl)) * ps.open.coerceAtLeast(0.0) * (1 - ps.blink.coerceIn(0.0, 1.0))
+        val glow = ps.glow * clamp(sleep.bright(bright, t) * (1 + 0.25 * hov + 0.3 * ls * lvl + Bold.SURGE_GLOW * surgeLevel()), 0.3, 2.2) + ps.rim * 0.4
+        cv.save(); cv.translate(leanX().toFloat() + (ps.dx * pk).toFloat(), leanY().toFloat() + (ps.dy * pk).toFloat())
+        val sc = ps.scale.toFloat()
+        if (abs(ps.sx - 1) > 1e-3 || abs(ps.sy - 1) > 1e-3 || abs(sc - 1) > 1e-3) { val ad = Math.toDegrees(ps.axis).toFloat(); cv.rotate(ad, cx, cy); cv.scale((ps.sx * sc).toFloat(), (ps.sy * sc).toFloat(), cx, cy); cv.rotate(-ad, cx, cy) }
+        cv.rotate(roll().toFloat() + ps.roll.toFloat(), cx, cy)
+        hf.draw(cv, cx, cy, R, t, ps, clamp(open, 0.0, 1.6), clamp(egx() / 0.2, -1.4, 1.4), clamp(egy() / 0.2, -1.4, 1.4), glow, sleep.e)
+        cv.restore()
+        val rg = ring
+        if (sp > 0 && rg != null) { p.blendMode = BlendMode.PLUS; drawFlyers(cv, rg, R.toDouble()); p.blendMode = null; p.alpha = 255; drawTiles(cv, rg) }
+    }
     private fun drawOdst(cv: Canvas) {
         val face = odstFace ?: return; val R = radius(); val ps = pose; val pk = (r / 92.0).toFloat()
         val hudA = 0.9 * ps.hudA * (1 - smooth(0.0, 0.5, sp)) * (1 - 0.8 * sleep.e)
@@ -536,5 +555,5 @@ class Orb(var cx: Float, var cy: Float, val r: Float, val skin: Skin, val dpr: F
     }
     fun hitTile(x: Float, y: Float): Int { val rg = ring ?: return -1; if (sp < 0.6) return -1
         for (i in rg.slots.indices) { val sl = rg.slots[i]; if (hypot(x - (cx + sl.x), y - (cy + sl.y)) < sl.s * 0.75f) return i }; return -1 }
-    fun recycle() { atlas?.recycle(); atlas = null; ringCache.clear() }
+    fun recycle() { atlas?.recycle(); atlas = null; ringCache.clear(); hol?.recycle() }
 }

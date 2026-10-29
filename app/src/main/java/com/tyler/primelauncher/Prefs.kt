@@ -12,6 +12,8 @@ class Prefs(ctx: Context) {
     val neon get() = theme == "neon"
     /** 0.1.17 ODST skin. */
     val odst get() = theme == "odst"
+    /** 0.1.27 holiday skin (manual only): five shaded holiday avatars that take turns. */
+    val holiday get() = theme == "holiday"
     /** ODST VISR night mode: "auto" (after dark), "on", "off". */
     var visr: String get() = s("visr", "auto"); set(v) = sp.edit().putString("visr", v).apply()
     /** ODST 4-note civic chime on PA panels (still silent on vibrate / silent / in calls). */
@@ -45,8 +47,6 @@ class Prefs(ctx: Context) {
     /** What Prime calls you in bubbles (blank = no name). */
     var buddyName: String get() = s("buddyName", ""); set(v) = sp.edit().putString("buddyName", v.trim().take(24)).apply()
     /** Optional study progress for study nudges (blank = generic lines only). */
-    var studyCourse: String get() = s("studyCourse", ""); set(v) = sp.edit().putString("studyCourse", v.trim().take(12)).apply()
-    var studyModule: String get() = s("studyModule", ""); set(v) = sp.edit().putString("studyModule", v.trim().take(12)).apply()
 }
 
 object Quick {

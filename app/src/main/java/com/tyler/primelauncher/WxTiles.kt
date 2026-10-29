@@ -16,7 +16,7 @@ import kotlin.math.sin
  * condition word; skinned per theme (Matrix terminal, Neon glow, ODST HUD). Current hour gets a brighter outline.
  * When there is nothing to show it draws one panel of the same height with a status line ("Location off" etc.).
  */
-enum class TileSkin { MATRIX, NEON, ODST }
+enum class TileSkin { MATRIX, NEON, ODST, HOLIDAY }
 
 class WxTiles(ctx: Context, private var pal: Pal) : View(ctx) {
     var hours: List<WxHour> = emptyList(); private set
@@ -64,14 +64,22 @@ class WxTiles(ctx: Context, private var pal: Pal) : View(ctx) {
                 c.drawLine(rr.left + cut + 2 * d, rr.top + i, rr.left + cut + 8 * d, rr.top + i, line); c.drawLine(rr.right - cut - 8 * d, rr.bottom - i, rr.right - cut - 2 * d, rr.bottom - i, line)
                 line.strokeCap = Paint.Cap.ROUND
             }
+            TileSkin.HOLIDAY -> { // 0.1.27: candle-lit card, ember outline, a little cobweb in the corner
+                val rad = 5 * d; fill.color = 0xE0160D0A.toInt(); c.drawRoundRect(rr, rad, rad, fill)
+                val oc = if (hot) HOL_ORANGE else 0xFF8A4A1C.toInt()
+                line.strokeWidth = (if (hot) 1.5f else 1f) * d; line.color = oc; if (hot) line.setShadowLayer(3f * d, 0f, 0f, HOL_ORANGE)
+                c.drawRoundRect(rr, rad, rad, line); line.clearShadowLayer()
+                line.strokeWidth = 0.6f * d; line.color = 0x66B57EF0; val w = 7 * d; val x0 = rr.right - 1.5f * d; val y0 = rr.top + 1.5f * d
+                c.drawLine(x0, y0, x0 - w, y0 + w, line); c.drawLine(x0 - w * 0.55f, y0, x0, y0 + w * 0.55f, line); c.drawLine(x0 - w, y0, x0, y0 + w, line)
+            }
         }
     }
     private lateinit var canvas: Canvas
     private val r2 = RectF()
-    private fun hourColor(hot: Boolean) = when (skin) { TileSkin.MATRIX -> if (hot) MX_GREEN else pal.dim; TileSkin.NEON -> if (hot) pal.p2 else pal.p; TileSkin.ODST -> if (hot) ODST_WHITE else ODST_SAGE }
-    private fun tempColor() = when (skin) { TileSkin.MATRIX -> MX_PALE; TileSkin.NEON -> Color.WHITE; TileSkin.ODST -> ODST_WHITE }
-    private fun wordColor(hr: WxHour) = when (skin) { TileSkin.MATRIX -> 0xFF5EC87E.toInt(); TileSkin.NEON -> 0xFFFF78B4.toInt(); TileSkin.ODST -> if (kind(hr) == "rain" || kind(hr) == "storm") ODST_SAGE else ODST_DIM }
-    private fun wordText(hr: WxHour, hot: Boolean) = when (skin) { TileSkin.MATRIX -> word(hr).uppercase() + if (hot) "_" else ""; TileSkin.ODST -> word(hr).uppercase(); TileSkin.NEON -> pal.up(word(hr)) }
+    private fun hourColor(hot: Boolean) = when (skin) { TileSkin.MATRIX -> if (hot) MX_GREEN else pal.dim; TileSkin.NEON -> if (hot) pal.p2 else pal.p; TileSkin.ODST -> if (hot) ODST_WHITE else ODST_SAGE; TileSkin.HOLIDAY -> if (hot) HOL_ORANGE else 0xFFB98A64.toInt() }
+    private fun tempColor() = when (skin) { TileSkin.MATRIX -> MX_PALE; TileSkin.NEON -> Color.WHITE; TileSkin.ODST -> ODST_WHITE; TileSkin.HOLIDAY -> 0xFFFFE2C8.toInt() }
+    private fun wordColor(hr: WxHour) = when (skin) { TileSkin.MATRIX -> 0xFF5EC87E.toInt(); TileSkin.NEON -> 0xFFFF78B4.toInt(); TileSkin.ODST -> if (kind(hr) == "rain" || kind(hr) == "storm") ODST_SAGE else ODST_DIM; TileSkin.HOLIDAY -> if (kind(hr) == "rain" || kind(hr) == "storm") 0xFFB57EF0.toInt() else 0xFFE0A060.toInt() }
+    private fun wordText(hr: WxHour, hot: Boolean) = when (skin) { TileSkin.MATRIX -> word(hr).uppercase() + if (hot) "_" else ""; TileSkin.ODST -> word(hr).uppercase(); TileSkin.NEON, TileSkin.HOLIDAY -> pal.up(word(hr)) }
     private fun hourText(hr: WxHour, hot: Boolean) = if (hot) pal.up("Now") else if (skin == TileSkin.MATRIX) hr.label.replace(" ", "").lowercase() else pal.up(hr.label)
 
     override fun onDraw(c: Canvas) {
@@ -116,7 +124,7 @@ class WxTiles(ctx: Context, private var pal: Pal) : View(ctx) {
     fun tileRects(): List<RectF> { val n = 7; val gap = 3 * d; val tw = (usableWidth() - gap * (n - 1)) / n; return (0 until n).map { i -> val x = i * (tw + gap); RectF(x, 0f, x + tw, height.toFloat()) } }
 
     private fun icon(c: Canvas, cx: Float, cy: Float, s: Float, kind: String, day: Boolean) {
-        val (main, acc) = when (skin) { TileSkin.MATRIX -> MX_GREEN to 0xFF1FBF55.toInt(); TileSkin.NEON -> pal.p to pal.p2; TileSkin.ODST -> 0xFFC9D8C6.toInt() to ODST_SAGE }
+        val (main, acc) = when (skin) { TileSkin.MATRIX -> MX_GREEN to 0xFF1FBF55.toInt(); TileSkin.NEON -> pal.p to pal.p2; TileSkin.ODST -> 0xFFC9D8C6.toInt() to ODST_SAGE; TileSkin.HOLIDAY -> HOL_ORANGE to 0xFFB57EF0.toInt() }
         line.strokeWidth = 1.6f * d; line.color = main
         if (skin == TileSkin.NEON) line.setShadowLayer(3f * d, 0f, 0f, if (kind == "rain" || kind == "storm") acc else main)
         when (kind) {
@@ -147,8 +155,8 @@ class WxTiles(ctx: Context, private var pal: Pal) : View(ctx) {
         // 0.1.26 layout (dp from tile top): hour, temperature line, icon, condition word
         const val HOUR_BASE_DP = 11f; const val TEMP_DP = 14f; const val TEMP_BASE_DP = 27f; const val ICON_DP = 10f; const val ICON_CENTER_DP = 41f
         const val MX_GREEN = 0xFF3DFF7A.toInt(); const val MX_PALE = 0xFFE2FFE9.toInt()
-        const val ODST_SAGE = 0xFF9DB89A.toInt(); const val ODST_WHITE = 0xFFF2F5F0.toInt(); const val ODST_DIM = 0xFF6F8370.toInt()
-        fun skinOf(p: Pal) = if (p.odst) TileSkin.ODST else if (p.neon) TileSkin.NEON else TileSkin.MATRIX
+        const val ODST_SAGE = 0xFF9DB89A.toInt(); const val ODST_WHITE = 0xFFF2F5F0.toInt(); const val ODST_DIM = 0xFF6F8370.toInt(); const val HOL_ORANGE = 0xFFFF8C1E.toInt()
+        fun skinOf(p: Pal) = if (p.holiday) TileSkin.HOLIDAY else if (p.odst) TileSkin.ODST else if (p.neon) TileSkin.NEON else TileSkin.MATRIX
         /** Visual center of the drawn icon (icons are drawn above their anchor by ~0.35-0.45 of size). */
         fun iconCenterY(icy: Float, s: Float) = icy - s * 0.4f
         fun kind(h: WxHour) = Logic.cond(h.code).second

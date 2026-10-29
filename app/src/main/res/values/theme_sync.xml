@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Emit (com.tyler.matrixsms) signing cert SHA-256: the only app allowed to hold Beacon's THEME_SYNC permission. -->
+    <string-array name="theme_sync_peer_certs" translatable="false">
+        <item>8b7d1af8bdbcb3fc83491d1d03019a5fb2887bd4c94ee0e0e3e8ab731fd12d07</item>
+    </string-array>
+</resources>

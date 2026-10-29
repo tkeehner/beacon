@@ -255,7 +255,7 @@ val MatrixTheme = EmitTheme(
 )
 
 object Themes {
-    val all: List<EmitTheme> = listOf(MatrixTheme, NeonCityTheme, OdstTheme)
+    val all: List<EmitTheme> = listOf(MatrixTheme, NeonCityTheme, OdstTheme, HolidayTheme)
     fun byId(id: String?): EmitTheme = all.firstOrNull { it.id == id } ?: MatrixTheme
 }
 

@@ -5,10 +5,9 @@ package com.tyler.primelauncher
  * its activity set, its idle mannerisms and how big it reacts. To add a theme, write one more object and register it in
  * [Personas.of]; the scheduler, bubble placement, interrupt rule and rate limits are shared.
  *
- * Every line is local and offline. `{name}` is the name set in Settings (blank = the line drops it), `{course}` / `{module}`
- * come from the optional study progress in Settings; lines that need them are skipped until they are set.
+ * Every line is local and offline. `{name}` is the name set in Settings (blank = the line drops it).
  */
-enum class Cat { GREETING, STUDY, CLEAN, CAR, JOKE, NOTIFY, MUSING, REACT }
+enum class Cat { GREETING, BREAK, CLEAN, CAR, JOKE, NOTIFY, MUSING, REACT }
 
 /** 0.1.17 PA = the ODST public-address panel: the 4-note chime, then the text types out. */
 enum class Reveal { GLYPH_DECODE, WORD_SLAM, PA }
@@ -36,14 +35,12 @@ interface Persona {
 }
 
 object Personas {
-    fun of(theme: String): Persona = when (theme) { "neon" -> NeonPersona; "odst" -> OdstPersona; else -> MatrixPersona }
-    val all: List<Persona> get() = listOf(MatrixPersona, NeonPersona, OdstPersona)
+    fun of(theme: String): Persona = when (theme) { "neon" -> NeonPersona; "odst" -> OdstPersona; "holiday" -> HolidayPersona; else -> MatrixPersona }
+    val all: List<Persona> get() = listOf(MatrixPersona, NeonPersona, OdstPersona, HolidayPersona)
 
-    /** Fill placeholders. Returns null if the line needs study progress that isn't set. */
-    fun fill(line: String, name: String, course: String, module: String): String? {
-        if (line.contains("{course}") && course.isBlank()) return null
-        if (line.contains("{module}") && module.isBlank()) return null
-        var s = line.replace("{course}", course.trim()).replace("{module}", module.trim())
+    /** Fill the {name} placeholder (blank name = the line drops it). */
+    fun fill(line: String, name: String): String {
+        var s = line
         val n = name.trim()
         s = if (n.isNotEmpty()) s.replace(Regex("\\{name\\|[^}]*\\}"), n).replace("{name}", n)
         else s.replace(Regex("\\{name\\|([^}]*)\\}"), "$1").replace(", {name},", "").replace(", {name}", "").replace("{name}, ", "").replace(" {name}", "").replace("{name}", "")
@@ -64,10 +61,10 @@ private fun bub(id: String, w: Double, cd: Int, from: Double = 0.0, to: Double =
 
 /** Bubble pool ids -> line category. */
 object PoolIds {
-    const val STUDY = "bub.study"; const val CLEAN = "bub.clean"; const val CAR = "bub.car"; const val JOKE = "bub.joke"; const val MUSING = "bub.musing"
-    fun cat(id: String): Cat? = when (id) { STUDY -> Cat.STUDY; CLEAN -> Cat.CLEAN; CAR -> Cat.CAR; JOKE -> Cat.JOKE; MUSING -> Cat.MUSING; else -> null }
+    const val BREAK = "bub.break"; const val CLEAN = "bub.clean"; const val CAR = "bub.car"; const val JOKE = "bub.joke"; const val MUSING = "bub.musing"
+    fun cat(id: String): Cat? = when (id) { BREAK -> Cat.BREAK; CLEAN -> Cat.CLEAN; CAR -> Cat.CAR; JOKE -> Cat.JOKE; MUSING -> Cat.MUSING; else -> null }
     val SHARED_BUBBLES = listOf(
-        bub(STUDY, 3.0, 240, 9.0, 21.0, reminder = true), bub(CLEAN, 2.0, 2880, 17.0, 22.0, reminder = true),
+        bub(BREAK, 3.0, 240, 9.0, 21.0, reminder = true), bub(CLEAN, 2.0, 2880, 17.0, 22.0, reminder = true),
         bub(CAR, 1.0, 10080, 10.0, 18.0, weekendOnly = true, reminder = true))
 }
 
@@ -87,12 +84,19 @@ object MatrixPersona : Persona {
             "morning, {name}. i've been expecting you.", "the sun rose. as foretold.", "déjà vu? no. it's just another morning. a good one.",
             "morning. morpheus would say: free your mind. i say: coffee first.", "you slept. i watched the code. nothing broke.", "a new day loads. 100%.",
             "morning, mr. ander... {name|anderson}. sorry. old habits.", "knock, knock, {name}. today is here."),
-        Cat.STUDY to listOf(
-            "course {course}, module {module}. after this... you'll know kung fu.", "i know kung fu. you will too, after module {module}.",
-            "knowledge is a door. module {module} is the key.", "the oracle sees an open course tab in your future.",
-            "red pill: study now. blue pill: study later. same module.", "there is no shortcut, {name}. only the next lesson.",
-            "free your mind. then fill it with module {module}.", "the architect built this course. you finish it.", "a quiet hour. a good hour to learn.",
-            "your path continues at course {course}, module {module}.", "even neo had to train. dojo is open.", "ten minutes of study bends the spoon."),
+        Cat.BREAK to listOf(
+            "step out of the matrix. stretch.",
+            "unplug for five minutes, {name}.",
+            "even neo needed a break. take one.",
+            "free your mind. rest your eyes.",
+            "look away from the code. far away.",
+            "a short break. the system waits.",
+            "stand up. the spoon can wait.",
+            "breathe. the rain keeps falling.",
+            "five minutes offline. i'll watch.",
+            "blink. stretch. reboot.",
+            "the oracle says: walk around.",
+            "pause the program. you earned it."),
         Cat.CLEAN to listOf(
             "the room... is not clean, {name}. there is no spoon. there is laundry.", "there is no spoon. there is, however, a pile of laundry.",
             "i've seen this mess before. déjà vu... or tuesday.", "what is real? the clothes on that chair are very real.",
@@ -119,7 +123,7 @@ object MatrixPersona : Persona {
         Cat.REACT to listOf("hm.", "i felt that.", "dodge this.", "...again?", "whoa.", "a glitch in me. pleasant.", "you found the white rabbit.",
             "i know kung fu. please don't test it.", "the oracle predicted that.", "nice. as foretold.", "inbox zero. there is no spoon, and no mail."))
     override val jokes = listOf(
-        "why do programmers prefer dark mode?" to "because light attracts bugs, mr. anderson.", "why did neo stay out of the kitchen?" to "there is no spoon.",
+        "why do programmers prefer dark mode?" to "because light attracts bugs, mr. anderson.", "why did neo skip the spoon aisle?" to "there is no spoon.",
         "red pill or blue pill?" to "trick question. it's the chill pill.", "how does the oracle stay so wise?" to "one cookie at a time.",
         "why did the agent go to therapy?" to "too many anderson issues.", "what do you call a déjà vu that repeats?" to "déjà vu.",
         "why don't skeletons fight agents?" to "they don't have the guts.", "what's morpheus's favorite drink?" to "matcha. it's the red pill of teas.",
@@ -131,7 +135,7 @@ object NeonPersona : Persona {
     override val id = "neon"; override val upper = true; override val reveal = Reveal.WORD_SLAM; override val reactionScale = 1.15
     override val quirks = listOf(Antics.BOB, Antics.WINK, Antics.BOB); override val quirkMinS = 30.0; override val quirkSpanS = 45.0
     override val micros = Micros.NEON + listOf(Antics.BOB, Antics.WINK)
-    override val badges = mapOf(Cat.GREETING to "⚡", Cat.STUDY to "★", Cat.CLEAN to "✦", Cat.CAR to "⚙", Cat.JOKE to "?", Cat.NOTIFY to "✉", Cat.MUSING to "♪", Cat.REACT to "★")
+    override val badges = mapOf(Cat.GREETING to "⚡", Cat.BREAK to "★", Cat.CLEAN to "✦", Cat.CAR to "⚙", Cat.JOKE to "?", Cat.NOTIFY to "✉", Cat.MUSING to "♪", Cat.REACT to "★")
     override val pool = listOf(
         act(Antics.SKATE, 3.0, 90), act(Antics.DJ, 3.0, 120, 16.0, 23.5), act(Antics.ARCADE, 3.0, 120), act(Antics.GRAFFITI, 2.0, 180, 17.0, 23.5),
         act(Antics.SIGN, 2.0, 120), act(Antics.JUGGLE, 2.0, 90), act(Antics.RAINCATCH, 1.0, 120)) +
@@ -142,12 +146,19 @@ object NeonPersona : Persona {
             "1UP! YOU RESPAWNED. LET'S MAKE THIS RUN COUNT!", "MORNING, CHOOM! VIBES ARE PREEM TODAY ★", "GREAT SCOTT, YOU'RE UP EARLY!",
             "MORE HUMAN THAN HUMAN, AND MORE AWAKE THAN EVER!", "NEW DAY, NEW HIGH SCORE. PLAYER 1 READY?", "RISE AND GRIND, NEON LEGEND! ☀",
             "BOOT SEQUENCE COMPLETE. HYPE LEVEL: MAX!", "EXTRA LIFE GRANTED. SPEND IT WELL!", "GM GM GM! WHAT ARE WE CRUSHING TODAY?"),
-        Cat.STUDY to listOf(
-            "INSERT COIN: COURSE {course}, MODULE {module}! LET'S RUN IT! ★", "LEVEL UP AVAILABLE: MODULE {module} ⚡", "STUDY SPEEDRUN! 15 MIN FOR THE HIGH SCORE!",
-            "CHOOM, YOUR CYBERDECK NEEDS AN UPGRADE. MODULE {module}?", "GREETINGS, PROGRAM! YOUR TRAINING AWAITS.",
-            "BOSS FIGHT: MODULE {module}. GRAB AN EXTRA LIFE AND GO!", "GREAT SCOTT! THE CERT WON'T EARN ITSELF!", "NEW QUEST UNLOCKED: FINISH MODULE {module}!",
-            "STREAK'S HUNGRY. FEED IT ONE LESSON!", "NETRUNNERS STUDY. BE A NETRUNNER ⚡", "10 MIN. ONE VIDEO. PREEM PROGRESS, NO CAP!",
-            "FUTURE YOU SAYS THANKS. FROM 1985, PROBABLY ★"),
+        Cat.BREAK to listOf(
+            "PAUSE MENU! STRETCH BREAK ★",
+            "SAVE POINT! TAKE FIVE, CHOOM.",
+            "COOLDOWN TIMER: 5 MIN. GO! ⚡",
+            "EYES OFF THE GRID FOR A MINUTE!",
+            "STRETCH COMBO: UP, DOWN, REPEAT!",
+            "BREAK TIME! EVEN ARCADES CLOSE.",
+            "STAND UP, PLAYER 1! ⚡",
+            "REFILL YOUR HEALTH BAR. REST!",
+            "INTERMISSION! BACK IN 5 ♪",
+            "GREAT SCOTT! TAKE A BREATHER!",
+            "LOOK AWAY! 20 FEET, 20 SECS.",
+            "RECHARGE MODE: ACTIVATED ★"),
         Cat.CLEAN to listOf(
             "ROOM CHECK, CHOOM! IT'S GIVING CHAOS. 10-MIN TIDY? ✦", "CLEAN ROOM SPEEDRUN! INSERT COIN... TIMER STARTS NOW!",
             "THAT CHAIR PILE IS A BOSS LEVEL. TIME TO BEAT IT!", "ALL THOSE SOCKS WILL BE LOST IN TIME... LIKE TEARS IN RAIN. UNLESS YOU PICK 'EM UP!",
@@ -190,7 +201,7 @@ object OdstPersona : Persona {
     override val quirks = listOf(Antics.STARE, OdstAntics.SCAN, OdstAntics.SCAN); override val quirkMinS = 40.0; override val quirkSpanS = 55.0
     override val micros = Micros.ODST + listOf(Antics.STARE)
     /** PA panel header per category. */
-    override val badges = mapOf(Cat.GREETING to "\u25A3 MUNICIPAL NOTICE", Cat.STUDY to "\u25A3 EDUCATION DEPT.", Cat.CLEAN to "\u25A3 SANITATION", Cat.CAR to "\u25A3 MOTOR POOL",
+    override val badges = mapOf(Cat.GREETING to "\u25A3 MUNICIPAL NOTICE", Cat.BREAK to "\u25A3 WELLNESS DEPT.", Cat.CLEAN to "\u25A3 SANITATION", Cat.CAR to "\u25A3 MOTOR POOL",
         Cat.JOKE to "\u25A3 PUBLIC MORALE", Cat.NOTIFY to "\u25A3 MAIL SERVICES", Cat.MUSING to "\u25A3 CITY LOG", Cat.REACT to "\u25A3 RESIDENT SERVICES")
     override val pool = listOf(
         act(OdstAntics.ROUNDS, 3.0, 90), act(OdstAntics.TRAFFIC, 3.0, 120), act(OdstAntics.BILLBOARD, 2.0, 120), act(OdstAntics.TIDY, 2.0, 240, 17.0, 23.0),
@@ -209,13 +220,19 @@ object OdstPersona : Persona {
             "NOTICE: A CONTACT IS ATTEMPTING COMMUNICATION.", "MAIL SORTING COMPLETE. ONE ITEM FLAGGED FOR YOU.", "A MESSAGE HAS ARRIVED IN YOUR SECTOR. INSPECT IT?",
             "DISPATCH ALERT: NEW MESSAGE. NO EMERGENCY DETECTED.", "TRANSMISSION ON CHANNEL ONE. SHALL I PATCH IT THROUGH?", "RESIDENT, YOU HAVE MAIL. THE CITY DID NOT PEEK.",
             "NEW MESSAGE QUEUED. READING SERVICE IS AVAILABLE NOW.", "ATTENTION: SOMEONE THOUGHT OF YOU. DETAILS ON REQUEST.", "COMMS LIGHT IS BLINKING. ACKNOWLEDGE?"),
-        Cat.STUDY to listOf(
-            "ATTENTION: COURSE {course}, MODULE {module} IS AWAITING ATTENDANCE.", "STUDY HALL IS NOW OPEN. MODULE {module} REQUESTS YOUR PRESENCE.",
-            "NOTICE: KNOWLEDGE LEVELS BELOW RECOMMENDED. 20 MINUTES ADVISED.", "COURSE {course} PROGRESS REPORT: PENDING YOUR CONTRIBUTION.",
-            "THE LIBRARY DISTRICT IS QUIET. IDEAL CONDITIONS FOR MODULE {module}.", "REMINDER: CERTIFICATION DOES NOT ISSUE ITSELF, RESIDENT.",
-            "STUDY BLOCK AVAILABLE. ZERO ZOMBIES REPORTED NEARBY.", "ATTENTION: ONE FLASHCARD SESSION PREVENTS MANY PANICS.",
-            "MODULE {module} ROUTE CALCULATED. ESTIMATED TIME: ONE COFFEE.", "NOTICE: YOUR FUTURE SELF HAS FILED A REQUEST. IT SAYS \"STUDY\".",
-            "EDUCATIONAL SERVICES REPORT: COURSE {course} IS {module} MODULES IN. KEEP GOING.", "QUIZ DETECTED ON THE HORIZON. PREPARATION IS RECOMMENDED."),
+        Cat.BREAK to listOf(
+            "NOTICE: A REST BREAK IS ADVISED.",
+            "PUBLIC NOTICE: STRETCH NOW.",
+            "RECESS AUTHORIZED. 5 MINUTES.",
+            "ATTENTION: EYES OFF SCREEN.",
+            "BREAK ROOM IS OPEN, RESIDENT.",
+            "CITY ADVISORY: STAND AND WALK.",
+            "REST PERIOD HAS BEEN SCHEDULED.",
+            "MANDATORY BREATHER. VOLUNTARY.",
+            "NOTICE: SHOULDERS DOWN, PLEASE.",
+            "PAUSE LOGGED. TAKE YOUR TIME.",
+            "ADVISORY: LOOK OUT A WINDOW.",
+            "WELLNESS PATROL: TAKE FIVE."),
         Cat.CLEAN to listOf(
             "ATTENTION RESIDENT: THIS ROOM IS NOT IN COMPLIANCE.", "SANITATION NOTICE: FLOOR VISIBILITY HAS DROPPED BELOW 40%.",
             "A 10-MINUTE TIDY HAS BEEN SCHEDULED. PARTICIPATION IS VOLUNTARY. ISH.", "LAUNDRY PILE HAS BEEN UPGRADED TO A LANDMARK. PLEASE ADDRESS.",
@@ -247,6 +264,6 @@ object OdstPersona : Persona {
         "WHY DID THE RAIN JOIN CITY COUNCIL?" to "TO MAKE SURE EVERYTHING WAS WELL-CONDUCTED.", "WHAT DO YOU CALL A SLEEPY BILLBOARD?" to "AN ADVERTIRED.",
         "WHY DID THE PARKING METER GO TO THERAPY?" to "IT HAD TOO MUCH TIME ON ITS HANDS.", "HOW DOES A CITY AI SAY HELLO?" to "WITH A FOUR-NOTE CHIME AND MILD JUDGMENT.",
         "WHY DID THE CROSSWALK BREAK UP WITH THE ROAD?" to "TOO MANY PEOPLE WALKING ALL OVER IT.", "WHAT'S A SEWER'S FAVORITE GAME?" to "HIDE AND LEAK.")
-    override val vergil = listOf("long shift. rest is recommended.", "you've been carrying a lot. it's okay to set some down.", "the city can wait. you matter more than its schedule.",
+    override val vergil = listOf("long day. rest is recommended.", "you've been carrying a lot. it's okay to set some down.", "the city can wait. you matter more than its schedule.",
         "drink some water. i'll keep watch.", "it's late. the streets will still be here tomorrow.", "you did enough today. really.")
 }

@@ -34,14 +34,18 @@ class Pose {
     var expr = Expr.EYES; var lid = 0.0; var wide = 0.0; var vergil = 0.0; var hudA = 1.0; var tag1: String? = null; var tag2: String? = null
     /** ODST face opacity (Pod Drop hides it until touchdown). */
     var faceA = 1.0
+    /** 0.1.27 holiday avatar parts: skull jaw drop, ghost hem wave, hat tip (-1 droop .. +1 perk) / pumpkin stem, cat ear / tail, fx phase. */
+    var hjaw = 0.0; var hhem = 0.0; var htip = 0.0; var hear = 0.0; var htail = 0.0; var hfx = 0.0
     fun reset() { dx = 0.0; dy = 0.0; sx = 1.0; sy = 1.0; axis = 0.0; roll = 0.0; scale = 1.0; gx = 0.0; gy = 0.0; gazeK = 0.0
         open = 1.0; blink = 0.0; happy = 0.0; spiral = 0.0; wink = 0.0; glow = 1.0; rim = 0.0; rainMul = 1.0; spin = 1.0; bodyK = 1.0; flash = 0.0; rotOff = 0.0
-        expr = Expr.EYES; lid = 0.0; wide = 0.0; vergil = 0.0; hudA = 1.0; tag1 = null; tag2 = null; faceA = 1.0 }
+        expr = Expr.EYES; lid = 0.0; wide = 0.0; vergil = 0.0; hudA = 1.0; tag1 = null; tag2 = null; faceA = 1.0
+        hjaw = 0.0; hhem = 0.0; htip = 0.0; hear = 0.0; htail = 0.0; hfx = 0.0 }
     /** Shrink every deviation from rest by [k] (persona reaction scale, fade-outs). */
     fun damp(k: Double) { dx *= k; dy *= k; roll *= k; sx = 1 + (sx - 1) * k; sy = 1 + (sy - 1) * k; scale = 1 + (scale - 1) * k; rotOff *= k }
     fun fade(k: Double) { damp(k); gazeK *= k; open = 1 + (open - 1) * k; blink *= k; happy *= k; spiral *= k; wink *= k; glow = 1 + (glow - 1) * k
         rim *= k; rainMul = 1 + (rainMul - 1) * k; spin = 1 + (spin - 1) * k; bodyK = 1 + (bodyK - 1) * k; flash *= k
-        lid *= k; wide *= k; vergil *= k; hudA = 1 + (hudA - 1) * k; faceA = 1 + (faceA - 1) * k; if (k < 0.5) expr = Expr.EYES }
+        lid *= k; wide *= k; vergil *= k; hudA = 1 + (hudA - 1) * k; faceA = 1 + (faceA - 1) * k; if (k < 0.5) expr = Expr.EYES
+        hjaw *= k; hhem *= k; htip *= k; hear *= k; htail *= k; hfx *= k }
 }
 
 object Ez {
@@ -467,7 +471,7 @@ object Antics {
         Antic(BOB, 4.0, AK.QUIRK, { s, p, _ -> val on = Ez.win(s, 0.0, 4.0, 0.3, 0.4); p.dy = 3 * abs(sin(PI * s * 2)) * on; p.roll = 4 * sin(PI * s) * on; p.happy = 0.3 * on },
             over = { a, s, p, g -> val on = Ez.win(s, 0.0, 4.0, 0.3, 0.4); for (i in 0 until 2) { val u = ((s * 0.5 + i * 0.5) % 1); a.glyph("♪", g.ox(p) + g.or(p) * (0.8 + 0.2 * i) + 10 * g.k * sin(u * 6), g.oy(p) - g.or(p) * 0.6 - u * 60 * g.k, 13 * g.k, if (i == 0) g.skin.accent else g.skin.head, on * sin(PI * u), 8.0) } }),
         Antic(WINK, 0.9, AK.QUIRK, { s, p, _ -> p.wink = Ez.bump(s - 0.1, 0.5); p.happy = 0.25 * Ez.bump(s - 0.1, 0.6); p.roll = 4 * Ez.bump(s - 0.1, 0.6) }),
-    ).plus(OdstAntics.list).plus(Micros.list).associateBy { it.id } }
+    ).plus(OdstAntics.list).plus(Micros.list).plus(HolidayAntics.list).associateBy { it.id } }
 
     operator fun get(id: String): Antic? = all[id]
 

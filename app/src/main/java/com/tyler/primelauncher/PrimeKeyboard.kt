@@ -52,7 +52,7 @@ class PrimeKeyboard(private val act: HomeActivity) {
                 Column(Modifier.fillMaxWidth()) {
                     MatrixKeyboard(kb)
                     // Black strip under the keys so they sit above the gesture/nav bar (the window draws edge to edge).
-                    if (kb.visible) Spacer(Modifier.fillMaxWidth().height(navDp.dp).background(Color(when (themeId) { "neon" -> 0xFF07060B; "odst" -> 0xFF06080B; else -> 0xFF000000 })))
+                    if (kb.visible) Spacer(Modifier.fillMaxWidth().height(navDp.dp).background(Color(when (themeId) { "neon" -> 0xFF07060B; "odst" -> 0xFF06080B; "holiday" -> 0xFF0A0608; else -> 0xFF000000 })))
                 }
             }
         }

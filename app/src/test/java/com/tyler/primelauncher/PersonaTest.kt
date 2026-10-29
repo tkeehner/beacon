@@ -11,7 +11,7 @@ import org.junit.Test
 class PersonaTest {
     @Test fun everyPersonaHasAFullBank() {
         for (p in Personas.all) {
-            for (c in listOf(Cat.GREETING, Cat.STUDY, Cat.CLEAN, Cat.CAR, Cat.NOTIFY, Cat.MUSING)) assertTrue("${p.id} $c", (p.lines[c]?.size ?: 0) >= 10)
+            for (c in listOf(Cat.GREETING, Cat.BREAK, Cat.CLEAN, Cat.CAR, Cat.NOTIFY, Cat.MUSING)) assertTrue("${p.id} $c", (p.lines[c]?.size ?: 0) >= 10)
             assertTrue(p.jokes.size >= 10); assertTrue((p.lines[Cat.REACT]?.size ?: 0) >= 6)
         }
     }
@@ -30,17 +30,19 @@ class PersonaTest {
     }
     @Test fun namePlaceholderFillsOrDisappearsCleanly() {
         for (p in Personas.all) for (l in p.lines.values.flatten()) {
-            val blank = Personas.fill(l, "", "3", "2") ?: continue; val named = Personas.fill(l, "Sam", "3", "2")!!
+            val blank = Personas.fill(l, ""); val named = Personas.fill(l, "Sam")
             assertFalse(blank, '{' in blank || "  " in blank || " ," in blank || ",." in blank || ", ." in blank || blank.startsWith(","))
             if ("{name" in l) assertTrue(named, "Sam" in named)
         }
-        assertEquals("wake up. follow the white rabbit... into today.", Personas.fill("wake up, {name}. follow the white rabbit... into today.", "", "", ""))
-        assertEquals("a warning light is just the car's déjà vu.", Personas.fill("a warning light, {name}, is just the car's déjà vu.", " ", "", ""))
-        assertEquals("morning, mr. ander... anderson. sorry.", Personas.fill("morning, mr. ander... {name|anderson}. sorry.", "", "", ""))
+        assertEquals("wake up. follow the white rabbit... into today.", Personas.fill("wake up, {name}. follow the white rabbit... into today.", ""))
+        assertEquals("a warning light is just the car's déjà vu.", Personas.fill("a warning light, {name}, is just the car's déjà vu.", " "))
+        assertEquals("morning, mr. ander... anderson. sorry.", Personas.fill("morning, mr. ander... {name|anderson}. sorry.", ""))
     }
-    @Test fun studyLinesNeedProgressOrStayGeneric() {
-        assertNull(Personas.fill("module {module} is the key.", "", "", "")); assertEquals("module 4 is the key.", Personas.fill("module {module} is the key.", "", "", "4"))
-        for (p in Personas.all) assertTrue(p.id, p.lines[Cat.STUDY]!!.count { Personas.fill(it, "", "", "") != null } >= 6)
+    @Test fun noStudyOrKitchenTalk() {
+        val bad = Regex("(?i)\\b(stud(y|ying)|module|flashcard|course|lesson|homework|nist|pomodoro|quiz|exam|cert(ification)?|prep|knife|knives|shift|kitchen|cook(ing)?|line cook)\\b")
+        for (p in Personas.all) { val all = p.lines.values.flatten() + p.jokes.flatMap { listOf(it.first, it.second) } + p.vergil
+            all.forEach { assertFalse("${p.id}: $it", bad.containsMatchIn(it)) }
+            assertTrue(p.id, p.lines[Cat.BREAK]!!.size >= 10) }
     }
     @Test fun voicesDiffer() {
         assertEquals("WAKE UP", NeonPersona.cased("Wake up")); assertEquals("wake up", MatrixPersona.cased("Wake Up"))

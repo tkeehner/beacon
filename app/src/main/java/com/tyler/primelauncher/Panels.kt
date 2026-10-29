@@ -150,7 +150,7 @@ object Panels {
             box.addView(r)
         }
         section("Look")
-        seg("Theme", listOf("matrix" to "Matrix", "neon" to "Neon City", "odst" to "ODST"), p.theme) { p.theme = it; h.applyLook() }
+        seg("Theme", listOf("matrix" to "Matrix", "neon" to "Neon City", "odst" to "ODST", "holiday" to "Holiday"), p.theme) { p.theme = it; ThemeSync.send(h, it); h.applyLook() }
         seg("App icons", listOf("ABSTRACT" to "Abstract", "LETTERS" to "Letters"), p.icons.name, "Abstract: original motifs in this theme's colors. Letters: plain tiles.") { p.icons = IconStyle.valueOf(it); h.applyLook() }
         if (p.neon) onOff("Glitch", p.glitch) { p.glitch = it; h.applyLook() }
         if (p.odst) {
@@ -171,11 +171,9 @@ object Panels {
         section("Companion")
         onOff("Orb companion", p.companion, "Prime has a little life of its own: activities now and then, reactions, two-finger poke and pet, tilt the phone to roll it.") { p.companion = it; if (!it) h.stage.buddy.clearBubble(); h.stage.stop(); h.stage.start() }
         if (p.companion) {
-            onOff("Orb chat bubbles", p.chat, "Now and then a short line in its own voice: greetings, study / room / car nudges, jokes. At most 6 a day, never 11:30p to 7a or while busy. Tap one to message Prime; swipe one away to mute that kind for today.") { p.chat = it; if (!it) h.stage.buddy.clearBubble() }
+            onOff("Orb chat bubbles", p.chat, "Now and then a short line in its own voice: greetings, break / room / car nudges, jokes. At most 6 a day, never 11:30p to 7a or while busy. Tap one to message Prime; swipe one away to mute that kind for today.") { p.chat = it; if (!it) h.stage.buddy.clearBubble() }
             if (p.chat) {
                 button("What Prime calls you", p.buddyName.ifBlank { "no name" }, false) { textDialog(h, "What Prime calls you", "first name or nickname (optional)", p.buddyName) { p.buddyName = it; settings(h) } }
-                button("Study progress (for study nudges)", if (p.studyCourse.isBlank() && p.studyModule.isBlank()) "not set" else "course ${p.studyCourse} · module ${p.studyModule}", false) {
-                    textDialog(h, "Course", "course number (optional)", p.studyCourse) { c -> p.studyCourse = c; textDialog(h, "Module", "module number (optional)", p.studyModule) { m -> p.studyModule = m; settings(h) } } }
             }
         }
         section("Prime")

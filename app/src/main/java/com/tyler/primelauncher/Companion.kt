@@ -84,7 +84,7 @@ class CompanionBrain(private val ctx: Context, private val prefs: Prefs, private
         val bag = LineBag.decode(prefs.sp.getString(key, null), n, seed); val i = bag.next(); prefs.sp.edit().putString(key, bag.encode()).apply(); return i
     }
     private fun filled(cat: Cat, keep: (String) -> Boolean = { true }): List<String> =
-        (persona.lines[cat] ?: emptyList()).filter(keep).mapNotNull { Personas.fill(it, prefs.buddyName, prefs.studyCourse, prefs.studyModule) }
+        (persona.lines[cat] ?: emptyList()).filter(keep).mapNotNull { Personas.fill(it, prefs.buddyName) }
     fun bubbleFor(cat: Cat, keep: (String) -> Boolean = { true }): ChatBubble? {
         val per = persona; val seed = per.id.hashCode().toLong() * 31 + cat.ordinal
         if (cat == Cat.JOKE) { val j = per.jokes; if (j.isEmpty()) return null; val (q, a) = j[bagNext("bag.${per.id}.JOKE", j.size, seed)]
@@ -96,7 +96,7 @@ class CompanionBrain(private val ctx: Context, private val prefs: Prefs, private
         return ChatBubble(per.cased(txt), cat, if (per.upper) badge ?: per.badges[cat] else null)
     }
     private fun show(cat: Cat, keep: (String) -> Boolean = { true }): Boolean { val b = bubbleFor(cat, keep) ?: return false; return stage.buddy.say(b, home.noteBubblesShowing()) }
-    private fun idFor(cat: Cat) = when (cat) { Cat.STUDY -> PoolIds.STUDY; Cat.CLEAN -> PoolIds.CLEAN; Cat.CAR -> PoolIds.CAR; Cat.JOKE -> PoolIds.JOKE
+    private fun idFor(cat: Cat) = when (cat) { Cat.BREAK -> PoolIds.BREAK; Cat.CLEAN -> PoolIds.CLEAN; Cat.CAR -> PoolIds.CAR; Cat.JOKE -> PoolIds.JOKE
         Cat.MUSING -> PoolIds.MUSING; Cat.GREETING -> GREET; Cat.NOTIFY -> NOTIFY; Cat.REACT -> REACT }
     /** Event-driven bubble through the same caps / quiet hours / mutes as the scheduled ones. */
     private fun event(cat: Cat, cooldownMin: Int, keep: (String) -> Boolean = { true }): Boolean {
@@ -176,7 +176,7 @@ class CompanionBrain(private val ctx: Context, private val prefs: Prefs, private
 
     /** Message Prime draft for a tapped bubble: typed in, never sent on its own. */
     fun draftFor(cat: Cat) = when (cat) {
-        Cat.GREETING -> "Good morning! What's on my plate today?"; Cat.STUDY -> "Help me plan my next study session."
+        Cat.GREETING -> "Good morning! What's on my plate today?"; Cat.BREAK -> "Give me a quick 5-minute break idea."
         Cat.CLEAN -> "Give me a quick 10-minute plan to tidy my room."; Cat.CAR -> "What car maintenance should I check on?"
         Cat.JOKE -> "Tell me another joke."; Cat.NOTIFY -> "Read me my new message."; Cat.MUSING, Cat.REACT -> "" }
 

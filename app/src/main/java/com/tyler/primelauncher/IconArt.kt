@@ -51,10 +51,10 @@ object IconArt {
     }
 
     /** App tile bitmap (drawer, search, bubbles, tray). size in px. */
-    fun tile(pkg: String, label: String, style: IconStyle, neonSkin: Boolean, sizePx: Int, density: Float, odst: Boolean = false): Bitmap {
+    fun tile(pkg: String, label: String, style: IconStyle, neonSkin: Boolean, sizePx: Int, density: Float, odst: Boolean = false, holiday: Boolean = false): Bitmap {
         val neon = neonSkin || odst
         val b = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888); val c = Canvas(b); val s = sizePx.toFloat(); val d = density
-        val p = Paint(Paint.ANTI_ALIAS_FLAG); val body = if (odst) 0xFFFFB23F.toInt() else if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt(); val acc = if (odst) 0xFF8FB8E0.toInt() else if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
+        val p = Paint(Paint.ANTI_ALIAS_FLAG); val body = if (holiday) 0xFFFF8C1E.toInt() else if (odst) 0xFFFFB23F.toInt() else if (neon) 0xFF3EE8F0.toInt() else 0xFF3DFF7A.toInt(); val acc = if (holiday) 0xFFB57EF0.toInt() else if (odst) 0xFF8FB8E0.toInt() else if (neon) 0xFFFF3D81.toInt() else 0xFFE2FFE9.toInt()
         val shape = Path(); val inset = 1.2f * d
         if (neon) { val k = s * 0.18f; shape.moveTo(inset + k, inset); shape.lineTo(s - inset, inset); shape.lineTo(s - inset, s - inset - k); shape.lineTo(s - inset - k, s - inset); shape.lineTo(inset, s - inset); shape.lineTo(inset, inset + k); shape.close() }
         else shape.addRoundRect(inset, inset, s - inset, s - inset, s * 0.24f, s * 0.24f, Path.Direction.CW)

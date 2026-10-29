@@ -62,6 +62,7 @@ class Buddy(private val st: StageView, private val prefs: Prefs) : SensorEventLi
     // ---------- antics ----------
     /** Play [id] from [from] s; [end] < 0 = its full length. Core moments replace anything; activities / quirks only start when idle. */
     fun play(id: String, from: Double = 0.0, end: Double = -1.0): Boolean {
+        if (st.ready && st.orb.hol?.swapping == true) return false // 0.1.27: the holiday face swap owns the orb for its 1.5-2 s
         if (!st.ready || !enabled) return false
         val a = Antics[id] ?: return false
         if (a.kind != AK.CORE && (prefs.reduce || cur != null)) return false
@@ -156,8 +157,10 @@ class Buddy(private val st: StageView, private val prefs: Prefs) : SensorEventLi
     private var nextBeat = -1.0; var lastBeat: String? = null; private set
     var beats = 0; private set; var beatActs = 0; private set; var beatBubbles = 0; private set
     /** True while nothing should interrupt the orb's rest: no antic, bubble, touch, ring, voice, sleep or bedtime. */
+    /** 0.1.27: no activity is running (the holiday face swap waits for this). */
+    val idleNow get() = cur == null
     fun beatIdle(busyBody: Boolean = cur != null): Boolean { val o = st.orb
-        return enabled && !busyBody && !prefs.reduce && o.mode == Mode.IDLE && o.sleep.k < 0.05 && !touching && o.sp < 0.01 && bubble == null && nextBubble == null && pending.isEmpty() }
+        return o.hol?.swapping != true && enabled && !busyBody && !prefs.reduce && o.mode == Mode.IDLE && o.sleep.k < 0.05 && !touching && o.sp < 0.01 && bubble == null && nextBubble == null && pending.isEmpty() }
     private fun beatStep(t: Double, busyBody: Boolean, o: Orb) {
         if (!beatIdle(busyBody)) { nextBeat = -1.0; return } // the 4-6 s count restarts once the orb is back at rest
         if (nextBeat < 0) { nextBeat = t + Beats.interval(Math.random()); return }

@@ -43,6 +43,7 @@ Beacon replaces the stock home screen with a single living character: an orb tha
 | **Matrix** | Green-on-black code rain, solid glyph icons, and sound-wave bars during calls |
 | **Neon City** | Cyan and magenta outlines, an optional glitch effect, and a waveform ring during calls |
 | **ODST** | A sage-green eyes-first face with a HUD, amber public-address panels with an original 4-note chime, a rainy night skyline, and an optional night outline mode |
+| **Holiday** | A spooky companion that swaps between four shaded characters (jack-o'-lantern, ghost, black cat, witch hat) with smoke, cauldron, or coin transitions, plus holiday weather tiles and keyboard. Turned on manually in Settings |
 
 Wallpaper style, glyph set, density, speed, and color are all adjustable in Settings.
 
@@ -159,6 +160,9 @@ The PC tool needs Python 3.9+ with `cryptography`, and reads the relay host, cer
 
 ## Changelog
 
+- **0.1.29:** The holiday set is four faces (jack-o'-lantern, ghost, cat, witch hat). The ghost and hat have no mouths, and the jack-o'-lantern keeps its original face.
+- **0.1.28:** Holiday rendering fixes (blur radii, one-piece ghost body, bounded render cache). Avatar swaps happen at most every 20 minutes, and that timer survives restarts. Cuter faces.
+- **0.1.27:** New Holiday theme with shaded characters, random smoke/cauldron/coin swap transitions, per-character antics and lines, and holiday weather tiles and keyboard. Optional two-way theme sync with a companion SMS app via an exported receiver guarded by a `signature|knownSigner` permission (set the peer app's signing-cert SHA-256 in `res/values/theme_sync.xml`). Companion dialogue no longer references studying or cooking; the study nudge is now a neutral break reminder.
 - **0.1.26:** Weather tiles read hour, temperature, icon, then condition, with the temperature as a solid line above an unobstructed icon. Each theme gets its own tile skin (Matrix terminal, Neon City glow, ODST HUD). Cleaner cloud icon.
 - **0.1.25:** Temperature readability and centering tweaks on the weather tiles.
 - **0.1.24:** Weather tiles fit inside the date's margins and scale text at large font sizes.

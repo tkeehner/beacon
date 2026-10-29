@@ -17,8 +17,8 @@ android {
         applicationId = "com.tyler.primelauncher"
         minSdk = 33 // Android 13+
         targetSdk = 35
-        versionCode = 27
-        versionName = "0.1.26"
+        versionCode = 30
+        versionName = "0.1.29"
         // Release APKs carry arm64-v8a only (~10 MB smaller). Build with -Pemu to add x86_64 for an emulator.
         ndk { abiFilters += if (project.hasProperty("emu")) listOf("arm64-v8a", "x86_64") else listOf("arm64-v8a") }
     }
