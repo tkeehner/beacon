@@ -46,6 +46,16 @@ object Logic {
         return floatArrayOf(floor, maxOf(120f, floor - topInset - 8f))
     }
 
+    /** 0.1.23: notification bubble tops (dp), stacked downward from just under the header (weather tiles) and never
+     *  reaching the orb. Size of the list = how many may show at once (0..[max]); the rest wait in the queue.
+     *  0 on very short screens: the unread counter + tray carry notifications there. */
+    const val NOTE_SLOT = 66f
+    fun noteSlots(headerBottom: Float, orbTop: Float, slotH: Float = NOTE_SLOT, max: Int = 3): List<Float> {
+        val top = headerBottom + 8f; val n = ((orbTop - 10f - top + (slotH - NOTE_H)) / slotH).toInt().coerceIn(0, max)
+        return List(n) { top + it * slotH }
+    }
+    const val NOTE_H = 60f
+
     /** WMO weather code -> label + kind (sun, cloud, rain, snow, storm, fog). */
     fun cond(code: Int): Pair<String, String> = when (code) {
         0 -> "Clear" to "sun"; 1 -> "Mostly clear" to "sun"; 2 -> "Partly cloudy" to "cloud"; 3 -> "Overcast" to "cloud"

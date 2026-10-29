@@ -81,6 +81,17 @@ object Call {
 
     fun begin(source: String) { synchronized(this) { tracker.begin(SystemClock.elapsedRealtime()); refresh(SystemClock.elapsedRealtime(), null) } }
     fun end() { synchronized(this) { tracker.reset(); set(false) } }
+    /** 0.1.21: Home lost focus/resume to the assist session (or Grok's call screen) since the call started. */
+    @Volatile private var awayFromHome = false
+    fun homeLeft() { if (active) awayFromHome = true }
+    /**
+     * 0.1.21: Home has focus again. With the 0.1.20 hang-up button gone, the overlay closing is the only "call ended"
+     * moment Beacon sees, so from here the call needs live call audio (comm mode / voice playback) to stay lit.
+     */
+    fun homeBack(ctx: Context) {
+        if (!awayFromHome) return; awayFromHome = false
+        synchronized(this) { tracker.homeBack(); refresh(SystemClock.elapsedRealtime(), signals(ctx)) }
+    }
 
     /** NotifService feed. */
     fun grokPosted(key: String, isCall: Boolean, tap: PendingIntent?) { grokNotes[key] = isCall to tap }
@@ -123,20 +134,31 @@ data class CallSignals(val grokNote: Boolean, val grokCallNote: Boolean, val aud
 }
 
 /** Pure call state machine (unit-tested). Times are elapsedRealtime ms. */
-class CallTracker(private val pendingMs: Long = 40_000, private val graceMs: Long = 4_000) {
+class CallTracker(private val pendingMs: Long = 40_000, private val graceMs: Long = 1_000, private val weakMaxMs: Long = 90_000) {
     var since = 0L; private set
     private var launchedAt = -1L; private var lastSeen = -1L; private var on = false
-    fun begin(now: Long) { launchedAt = now; lastSeen = -1L; if (!on) since = now }
-    fun reset() { launchedAt = -1L; lastSeen = -1L; on = false }
+    private var strict = false; private var lastStrong = -1L
+    fun begin(now: Long) { launchedAt = now; lastSeen = -1L; lastStrong = now; strict = false; if (!on) since = now }
+    fun reset() { launchedAt = -1L; lastSeen = -1L; lastStrong = -1L; strict = false; on = false }
+    /** Home is back on top after the assist session: drop launch pending, require real call audio. */
+    fun homeBack() { if (on) { strict = true; launchedAt = -1L } }
     /** [s] null = no fresh reading (keep timing rules only). */
     fun update(now: Long, s: CallSignals?): Boolean {
         val launched = launchedAt >= 0
-        val evidence = s != null && (s.grokCallNote || (s.grokNote && s.audio) || (launched && s.audio))
-        if (evidence) { if (!on) since = if (launched) launchedAt else now; lastSeen = now; on = true; return true }
+        val strong = s != null && (s.audioComm || s.voicePlayback)
+        if (strong && (on || launched)) lastStrong = now
+        // Weak evidence (a lingering Grok foreground note, Grok's own hotword mic) can't hold a call forever: 0.1.21
+        // ends it once there's been no real call audio for [weakMaxMs], and ignores it entirely once Home is back.
+        val weakOk = !strict && (lastStrong < 0 || now - lastStrong < weakMaxMs)
+        val evidence = s != null && ((strong && (on || launched || s.grokNote)) || (weakOk && (s.grokCallNote || (s.grokNote && s.audio) || (launched && s.audio))))
+        if (evidence) { if (!on) since = if (launched) launchedAt else now; lastSeen = now; on = true; if (lastStrong < 0) lastStrong = now; return true }
         val pending = launched && lastSeen < 0 && now - launchedAt < pendingMs
-        val grace = lastSeen >= 0 && now - lastSeen < graceMs
-        on = pending || (on && grace) || (on && s == null)
-        if (!on) { launchedAt = -1L; lastSeen = -1L }
+        // 0.1.22: 1 s grace (was 4 s); once Home is back, a fresh reading without real call audio (comm mode / voice
+        // playback) ends it at once. Mic use is never a signal here: the wake word keeps the mic open.
+        val grace = lastSeen >= 0 && now - lastSeen < graceMs && !(strict && s != null)
+        val stale = lastStrong >= 0 && now - lastStrong >= weakMaxMs && !pending
+        on = pending || (on && grace) || (on && s == null && !stale)
+        if (!on) { launchedAt = -1L; lastSeen = -1L; lastStrong = -1L; strict = false }
         return on
     }
 }

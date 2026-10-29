@@ -167,7 +167,7 @@ object Panels {
         onOff("Notification bubbles", p.bubbles, "New notifications pop out of the orb. Tap opens, swipe clears.") { p.bubbles = it }
         onOff("Flick the orb", p.quickOn, "Flick from the orb to quick-launch. Holding still opens the ring.") { p.quickOn = it }
         if (p.quickOn) for (dir in Quick.DIRS) button("Flick ${dir}", h.quickLabel(p.quick(dir)), false) { pickQuick(h, dir) }
-        seg("Weather location", listOf("1" to "Where I am", "0" to "Default location"), if (p.wxGps) "1" else "0") { p.wxGps = it == "1"; if (it == "1" && !h.has(Manifest.permission.ACCESS_COARSE_LOCATION)) h.requestPerm(Manifest.permission.ACCESS_COARSE_LOCATION); p.wxCache = "" }
+        seg("Weather location", listOf("1" to "Where I am", "0" to "Default location"), if (p.wxGps) "1" else "0") { p.wxGps = it == "1"; Weather.locState = Weather.LOC_OK; if (it == "1" && !h.has(Manifest.permission.ACCESS_COARSE_LOCATION)) h.requestPerm(Manifest.permission.ACCESS_COARSE_LOCATION); p.wxCache = "" }
         section("Companion")
         onOff("Orb companion", p.companion, "Prime has a little life of its own: activities now and then, reactions, two-finger poke and pet, tilt the phone to roll it.") { p.companion = it; if (!it) h.stage.buddy.clearBubble(); h.stage.stop(); h.stage.start() }
         if (p.companion) {
@@ -194,7 +194,7 @@ object Panels {
         section("System")
         button("Default home app", "open", false) { h.openSys(Settings.ACTION_HOME_SETTINGS) }
         button("Restart onboarding", "show", false) { onboarding(h) }
-        box.addView(h.text(pal, "Beacon 0.1.20 · open-source build (original abstract icons only).", 10f, pal.dim, lines = 4).apply { setPadding(0, h.dpi(18f), 0, 0) })
+        box.addView(h.text(pal, "Beacon 0.1.26 · open-source build (original abstract icons only).", 10f, pal.dim, lines = 4).apply { setPadding(0, h.dpi(18f), 0, 0) })
         val sv = ScrollView(h).apply { addView(box); isVerticalScrollBarEnabled = false; background = GradientDrawable().apply { setColor(Color.argb(0xF4, Color.red(pal.s1), Color.green(pal.s1), Color.blue(pal.s1))); cornerRadii = FloatArray(8) { if (it < 4) h.dp(22f) else 0f }; setStroke(h.dpi(1f), pal.line) } }
         val wasOpen = h.panelIs("settings"); val y = (h.currentPanel() as? ScrollView)?.scrollY ?: 0
         val lpv = FrameLayout.LayoutParams(MATCH, (h.stage.height * 0.62f).toInt(), Gravity.BOTTOM)

@@ -51,8 +51,8 @@ class SchedulerTest {
         assertNull("10 min between anything", Scheduler.tick(st, pool, ctx(605), BUB_R))
         assertNull("20 min between activities", Scheduler.tick(st, pool, ctx(615), ACT_R))
         assertNotNull("a bubble after 10", Scheduler.tick(st, pool, ctx(611), BUB_R))
-        assertNull("30 min between bubbles", Scheduler.tick(st, pool, ctx(630), BUB_R))
-        assertNotNull(Scheduler.tick(st, pool, ctx(642), BUB_R))
+        assertNull("10 min between anything", Scheduler.tick(st, pool, ctx(618), BUB_R))
+        assertNotNull("0.1.22: no 30-min bubble gap any more", Scheduler.tick(st, pool, ctx(622), BUB_R))
     }
 
     @Test fun neverTheSameThingTwiceInARow() {
@@ -67,7 +67,7 @@ class SchedulerTest {
     @Test fun dailyBubbleCapAndNewDayReset() {
         val pool = (1..8).map { PoolItem("b$it", Kind.BUB, 1.0, 0) }
         val st = SchedState(); var shown = 0; var t = 7 * 60L
-        while (t < 23 * 60) { if (Scheduler.tick(st, pool, ctx(t), BUB_R) != null) shown++; t += 31 }
+        while (t < 23 * 60) { if (Scheduler.tick(st, pool, ctx(t), BUB_R) != null) shown++; t += 11 }
         assertEquals(Rules.BUB_DAY_CAP, shown)
         assertFalse("event bubbles share the cap", Scheduler.canBubble(st, ctx(22 * 60), "greet"))
         assertNotNull("new day, new budget", Scheduler.tick(st, pool, ctx(8 * 60, d = day + 1), BUB_R))

@@ -48,6 +48,8 @@ class Buddy(private val st: StageView, private val prefs: Prefs) : SensorEventLi
         fun onReact(kind: String) {}
         /** 0.1.18: activities an idle beat may start right now (time-of-day gates, quiet hours, busy already applied). */
         fun beatActs(): List<PoolItem> = emptyList()
+        /** 0.1.22: offer this beat to a chat bubble; true if one is now showing. */
+        fun beatBubble(): Boolean = false
     }
     var listener: Listener? = null
     val geo = Geo(); private val art = Art()
@@ -152,7 +154,7 @@ class Buddy(private val st: StageView, private val prefs: Prefs) : SensorEventLi
 
     // ---------- 0.1.18 idle beats ----------
     private var nextBeat = -1.0; var lastBeat: String? = null; private set
-    var beats = 0; private set; var beatActs = 0; private set
+    var beats = 0; private set; var beatActs = 0; private set; var beatBubbles = 0; private set
     /** True while nothing should interrupt the orb's rest: no antic, bubble, touch, ring, voice, sleep or bedtime. */
     fun beatIdle(busyBody: Boolean = cur != null): Boolean { val o = st.orb
         return enabled && !busyBody && !prefs.reduce && o.mode == Mode.IDLE && o.sleep.k < 0.05 && !touching && o.sp < 0.01 && bubble == null && nextBubble == null && pending.isEmpty() }
@@ -162,6 +164,7 @@ class Buddy(private val st: StageView, private val prefs: Prefs) : SensorEventLi
         if (idleS > 240 && listener?.allowIdleAct(Antics.PEEKABOO) == true) { play(Antics.PEEKABOO); lastTouchT = t; nextBeat = -1.0; return }
         if (t < nextBeat) return
         nextBeat = -1.0
+        if (listener?.beatBubble() == true) { beatBubbles++; return }
         val per = Personas.of(prefs.theme); val acts = listener?.beatActs() ?: emptyList()
         val id = Beats.next(Math.random(), Math.random(), per.micros, acts, lastBeat) ?: return
         if (play(id)) { lastBeat = id; beats++; if (!Micros.isMicro(id) && Antics[id]?.kind == AK.ACT) beatActs++ }

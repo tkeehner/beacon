@@ -3,7 +3,7 @@ package com.tyler.primelauncher
 /**
  * 0.1.15 companion: when does the orb do something on its own? Pure logic (no Android), unit-tested in SchedulerTest.
  *
- * Every [Rules.TICK_MIN] minutes of home-on-screen time it rolls: ~10% an activity, ~6% a chat bubble, from the active
+ * Every [Rules.TICK_MIN] minutes of home-on-screen time it rolls: ~10% an activity, ~6% a chat bubble (0.1.22: bubbles mostly come from idle beats, see [Scheduler.beatBubble]), from the active
  * persona's weighted pool. Items have their own cooldowns and hour windows, the last pick never repeats back to back,
  * there are minimum gaps between activities / bubbles / anything, at most [Rules.BUB_DAY_CAP] bubbles a day, nothing in
  * quiet hours (23:30-07:00) or while busy (Do Not Disturb, a call, Hey Prime / Message Prime, typing, battery saver).
@@ -19,8 +19,11 @@ data class PoolItem(val id: String, val kind: Kind, val weight: Double, val cool
 object Rules {
     const val TICK_MIN = 5L
     const val P_ACT = 0.10; const val P_BUB = 0.06
-    const val GAP_ACT = 20L; const val GAP_BUB = 30L; const val GAP_ANY = 10L
-    const val BUB_DAY_CAP = 6
+    const val GAP_ACT = 20L; const val GAP_BUB = 2L; const val GAP_ANY = 10L
+    /** 0.1.22: bubbles ride the idle beats, so the cap rose from 6 to 40. */
+    const val BUB_DAY_CAP = 40
+    /** 0.1.22 beat bubbles: at least 90 s apart, then each idle beat (~every 5-8 s) has this chance -> ~one every 2 min. */
+    const val BEAT_BUB_GAP_S = 90L; const val P_BEAT_BUB = 0.2
     const val QUIET_FROM = 23.5; const val QUIET_TO = 7.0
     /** Below this battery level activities stop; only reminder bubbles may still show. */
     const val LOW_BATT = 0.15f
@@ -28,13 +31,18 @@ object Rules {
 }
 
 /** [nowMin] = minutes on any monotonic-enough wall clock (epoch minutes), [hour] = local hour of day 0..24, [day] = local day number. */
-data class SchedCtx(val nowMin: Long, val hour: Double, val day: Long, val weekend: Boolean = false, val busy: Boolean = false, val battLow: Boolean = false, val raining: Boolean = false)
+data class SchedCtx(val nowMin: Long, val hour: Double, val day: Long, val weekend: Boolean = false, val busy: Boolean = false, val battLow: Boolean = false, val raining: Boolean = false,
+                    val nowSec: Long = nowMin * 60)
 
 class SchedState {
     val last = HashMap<String, Long>()
     var lastId = ""
     var lastAct = NEVER; var lastBub = NEVER; var lastAny = NEVER
     var day = -1L; var bubToday = 0
+    /** 0.1.22: epoch seconds of the last bubble (any source), for the 90 s beat-bubble gap. */
+    var lastBubSec = NEVER
+    /** 0.1.22: pool id of the last bubble, so the same kind never shows twice in a row. */
+    var lastBubId = ""
     val muted = HashSet<String>()
     /** id -> days it was swiped away (kept for a week). */
     val dismissed = HashMap<String, MutableList<Long>>()
@@ -50,7 +58,7 @@ class SchedState {
         append("v1|").append(lastId).append('|').append(lastAct).append('|').append(lastBub).append('|').append(lastAny).append('|').append(day).append('|').append(bubToday).append('|')
         append(last.entries.joinToString(",") { "${it.key}=${it.value}" }).append('|')
         append(muted.joinToString(",")).append('|')
-        append(dismissed.entries.joinToString(",") { e -> e.key + "=" + e.value.joinToString(":") })
+        append(dismissed.entries.joinToString(",") { e -> e.key + "=" + e.value.joinToString(":") }).append('|').append(lastBubSec).append('|').append(lastBubId)
     }
 
     companion object {
@@ -64,6 +72,7 @@ class SchedState {
                 if (p[8].isNotEmpty()) st.muted.addAll(p[8].split(','))
                 if (p.size > 9 && p[9].isNotEmpty()) p[9].split(',').forEach { kv -> val i = kv.lastIndexOf('=')
                     st.dismissed[kv.substring(0, i)] = kv.substring(i + 1).split(':').filter { it.isNotEmpty() }.map { it.toLong() }.toMutableList() }
+                if (p.size > 11) { st.lastBubSec = p[10].toLong(); st.lastBubId = p[11] }
             }.onFailure { return SchedState() }
             return st
         }
@@ -92,7 +101,7 @@ object Scheduler {
     }
 
     fun eligible(st: SchedState, pool: List<PoolItem>, c: SchedCtx, kind: Kind): List<PoolItem> = pool.filter { it ->
-        it.kind == kind && it.id != st.lastId && inHours(it, c) && since(st.last[it.id] ?: SchedState.NEVER, c.nowMin) >= it.cooldownMin &&
+        it.kind == kind && it.id != st.lastId && (kind != Kind.BUB || it.id != st.lastBubId) && inHours(it, c) && since(st.last[it.id] ?: SchedState.NEVER, c.nowMin) >= it.cooldownMin &&
             (if (kind == Kind.BUB) canBubble(st, c, it.id, 0, it.reminder) else canAct(st, c))
     }
 
@@ -103,6 +112,25 @@ object Scheduler {
      */
     fun beatActs(pool: List<PoolItem>, c: SchedCtx): List<PoolItem> =
         if (quiet(c.hour) || c.busy || c.battLow) emptyList() else pool.filter { it.kind == Kind.ACT && inHours(it, c) }
+
+    /**
+     * 0.1.22 beat bubble: a chat bubble as one of the 4-6 s idle beats. Quiet hours, busy, low battery (reminders excepted),
+     * mutes, hour windows and the daily cap still apply; the same kind never twice in a row; at least [Rules.BEAT_BUB_GAP_S]
+     * since any bubble; then a [Rules.P_BEAT_BUB] roll. Reminder kinds (study / clean / car) keep their own cooldowns so
+     * they don't nag; jokes and musings don't (their lines come from a no-repeat bag). Records the pick.
+     */
+    fun beatBubble(st: SchedState, pool: List<PoolItem>, c: SchedCtx, r1: Double, r2: Double): PoolItem? {
+        st.rollDay(c.day)
+        if (quiet(c.hour) || c.busy || st.bubToday >= Rules.BUB_DAY_CAP) return null
+        if (st.lastBubSec != SchedState.NEVER && c.nowSec - st.lastBubSec < Rules.BEAT_BUB_GAP_S) return null
+        if (r1 >= Rules.P_BEAT_BUB) return null
+        val cands = pool.filter { it.kind == Kind.BUB && it.id != st.lastBubId && it.id !in st.muted && inHours(it, c) && (!c.battLow || it.reminder) &&
+            (!it.reminder || since(st.last[it.id] ?: SchedState.NEVER, c.nowMin) >= it.cooldownMin) }
+        if (cands.isEmpty()) return null
+        var x = r2 * cands.sumOf { weight(st, it) }; var pick = cands.last()
+        for (it in cands) { x -= weight(st, it); if (x <= 0) { pick = it; break } }
+        record(st, pick.id, Kind.BUB, c); return pick
+    }
 
     fun weight(st: SchedState, it: PoolItem) = if ((st.dismissed[it.id]?.size ?: 0) >= Rules.DISMISS_WEEK) it.weight / 2 else it.weight
 
@@ -120,7 +148,7 @@ object Scheduler {
 
     fun record(st: SchedState, id: String, kind: Kind, c: SchedCtx) {
         st.rollDay(c.day); st.last[id] = c.nowMin; st.lastId = id; st.lastAny = c.nowMin
-        if (kind == Kind.ACT) st.lastAct = c.nowMin else { st.lastBub = c.nowMin; st.bubToday++ }
+        if (kind == Kind.ACT) st.lastAct = c.nowMin else { st.lastBub = c.nowMin; st.lastBubSec = c.nowSec; st.lastBubId = id; st.bubToday++ }
     }
 
     /** A bubble was swiped away: mute that kind for the day and remember it for the weekly halving. */

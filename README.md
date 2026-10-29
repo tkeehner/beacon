@@ -18,7 +18,7 @@ Beacon replaces the stock home screen with a single living character: an orb tha
 - **Notification bubbles.** New notifications pop out of the orb. Tap one to open it or swipe it away to clear it.
 - **Offline voice wake word.** On-device speech recognition with [Vosk](https://alphacephei.com/vosk/) listens for a wake word only while the screen is on and unlocked. No audio leaves the phone.
 - **Built-in themed keyboard** for the home "message" box, with autocorrect, a word engine, and an emoji panel.
-- **Weather bar** using [Open-Meteo](https://open-meteo.com/). No API key is needed.
+- **Hourly weather tiles**: the next seven hours from [Open-Meteo](https://open-meteo.com/), styled per theme. No API key is needed. With "Where I am" selected, the row shows "Location off" or "Location not gathered" instead of falling back to a fixed spot.
 - **Works with any agent.** A swappable [agent connector](#connectors--use-with-any-agent) lets the home message box talk to any agentic system that accepts an HTTPS webhook. You configure the endpoint, auth, and payload. No agent is built in.
 - **Optional remote updates** from your own PC through a relay you run. The phone only offers an update that is the same app, signed with the same key, and newer, and Android's own Install prompt always asks you first.
 - **Battery saver and Reduce motion** modes.
@@ -159,6 +159,12 @@ The PC tool needs Python 3.9+ with `cryptography`, and reads the relay host, cer
 
 ## Changelog
 
+- **0.1.26:** Weather tiles read hour, temperature, icon, then condition, with the temperature as a solid line above an unobstructed icon. Each theme gets its own tile skin (Matrix terminal, Neon City glow, ODST HUD). Cleaner cloud icon.
+- **0.1.25:** Temperature readability and centering tweaks on the weather tiles.
+- **0.1.24:** Weather tiles fit inside the date's margins and scale text at large font sizes.
+- **0.1.23:** Seven hourly weather tiles under the date (Open-Meteo hourly forecast, live coarse location refreshed when Home opens). Notifications stack below the tiles without overlap.
+- **0.1.22:** Chat bubbles join the idle beats (about one every 2 minutes, 90-second minimum gap, daily cap of 40; quiet hours unchanged). The call orb ends about 1 second after call audio stops.
+- **0.1.21:** The call orb stops when the assist session ends (requires real call audio after returning home; 90-second weak-signal timeout).
 - **0.1.20:** The system assist session is the only way a call starts. The on-screen hang-up button is gone in every theme; end the call from the assistant's own overlay.
 - **0.1.19:** Experimental call-launch methods. The orb heads home as soon as the call notification appears.
 - **0.1.18:** The ODST face is the same size as the other orbs. Idle beats run every 4 to 6 seconds in all themes, mixing micro-animations with full activities.
@@ -173,7 +179,7 @@ Beacon asks for each permission only when the feature that needs it is turned on
 - **Usage access:** shows most-used apps.
 - **Notification access:** powers the bubbles.
 - **Microphone:** used for the wake word only.
-- **Coarse location:** used for weather. Without it, weather falls back to a default location.
+- **Coarse location:** used for weather. Without it, weather can use the fixed default location setting; with "Where I am" selected it shows "Location off" instead.
 - **Display over other apps:** optional.
 - **Install unknown apps:** only for the optional remote updater. You turn it on yourself, and every install still goes through Android's prompt.
 - **Accessibility services:** used for the optional hang-up helper and bridge control. These are off until you enable them.

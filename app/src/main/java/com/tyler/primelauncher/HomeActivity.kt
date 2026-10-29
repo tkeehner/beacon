@@ -57,7 +57,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     /** 0.1.15 companion brain (scheduler, persona lines, home moments). */
     lateinit var brain: CompanionBrain
     private lateinit var root: FrameLayout; private lateinit var overlay: FrameLayout
-    private lateinit var tTime: TextView; private lateinit var tDate: TextView; private lateinit var tWx: TextView; private lateinit var tWxIcon: TextView
+    private lateinit var tTime: TextView; private lateinit var tDate: TextView; lateinit var wxTiles: WxTiles
     private lateinit var pill: TextView; private lateinit var torchChip: TextView; private lateinit var hint: TextView; private lateinit var ringHintV: TextView
     private lateinit var bubbles: FrameLayout; private lateinit var unread: TextView; private var tray: View? = null
     private lateinit var pbox: LinearLayout; private lateinit var pmsg: EditText; private lateinit var mxChip: TextView
@@ -122,13 +122,13 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         registerReceiver(battRx, IntentFilter().apply { addAction(Intent.ACTION_BATTERY_CHANGED); addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED) })
         stage.start(); val locked = keyguardLocked(); val act = wakeGate.resumed(SystemClock.elapsedRealtime(), locked)
         // Self-heal: the gate says nothing to do and nothing is locked, yet Prime is still asleep (a missed broadcast) -> wake it.
-        applyWake(if (act == WakeGate.Act.NONE && !locked && !wakeGate.asleep && stage.ready && stage.orb.sleep.asleep) WakeGate.Act.WAKE else act); WakeService.sync(this); reloadApps(); refreshWx(false); onNotesChanged(); Call.poll(this); renderCall()
+        applyWake(if (act == WakeGate.Act.NONE && !locked && !wakeGate.asleep && stage.ready && stage.orb.sleep.asleep) WakeGate.Act.WAKE else act); WakeService.sync(this); reloadApps(); refreshWx(false, Weather.RESUME_MS); onNotesChanged(); Call.homeBack(this); Call.poll(this); renderCall()
         hint.visibility = if (prefs.homeVisits <= 5) View.VISIBLE else View.GONE
         main.postDelayed({ hint.animate().alpha(0f).setDuration(600).start() }, 7000)
         if (panelKind == "onboard") openOnboarding()
     }
     override fun onPause() {
-        super.onPause(); brain.pausedHome(); wakeGate.paused(); keys.hide(); CallLevel.stop(); PrimeApp.homeVisible = false; runCatching { unregisterReceiver(battRx) }; stage.stop(); stage.closeRing(); WakeService.sync(this)
+        super.onPause(); Call.homeLeft(); brain.pausedHome(); wakeGate.paused(); keys.hide(); CallLevel.stop(); PrimeApp.homeVisible = false; runCatching { unregisterReceiver(battRx) }; stage.stop(); stage.closeRing(); WakeService.sync(this)
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -145,6 +145,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     /** Unlock straight to Home: focus arrives once the keyguard has gone (after onResume), so wake there. */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) Call.homeLeft() else { Call.homeBack(this); renderCall() } // 0.1.21: assist overlay closed -> stop the call orb
         if (hasFocus && wakeGate.asleep) applyWake(wakeGate.arrived(SystemClock.elapsedRealtime(), keyguardLocked()))
     }
     private var gateCheckAt = 0L
@@ -200,10 +201,8 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         val widget = col().apply { setPadding(dpi(24f), dpi(topIn + 18f), dpi(24f), 0) }
         tTime = text(pal, "", if (prefs.neon || prefs.odst) 64f else 58f, pal.hi, bold = true); tTime.setShadowLayer(dp(10f), 0f, 0f, pal.hi)
         tDate = text(pal, "", 14f, pal.body); tDate.setPadding(0, dpi(4f), 0, dpi(6f))
-        tWxIcon = text(pal, "", 16f, pal.p2); tWx = text(pal, "", 13f, pal.body, lines = 1)
-        val wxRow = row(tWxIcon, tWx).apply { setOnClickListener { toast("Updating weather…"); refreshWx(true) } }
-        (tWx.layoutParams as? LinearLayout.LayoutParams)?.leftMargin = dpi(8f)
-        widget.addView(tTime); widget.addView(tDate); widget.addView(wxRow)
+        wxTiles = WxTiles(this, pal).apply { setOnClickListener { toast("Updating weather…"); refreshWx(true) } } // 0.1.23: seven-hour tiles
+        widget.addView(tTime); widget.addView(tDate); widget.addView(wxTiles, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dpi(2f) }) // 0.1.24: same margins as the date
         overlay.addView(widget, FrameLayout.LayoutParams(MATCH, WRAP))
         widget.addOnLayoutChangeListener { v, _, _, _, b, _, _, _, ob -> if (b != ob || stage.headerBottom < 0) stage.headerBottom = v.bottom / stage.d } // 0.1.11: ring stays below this
         torchChip = text(pal, pal.up("flashlight on"), 11f, pal.bg, bold = true).apply { setPadding(dpi(10f), dpi(5f), dpi(10f), dpi(5f)); background = pal.chip(ctx, true); visibility = View.GONE; setOnClickListener { setTorch(false) } }
@@ -257,6 +256,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         tTime.text = SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now))
         tDate.text = pal.up(SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(Date(now)))
         if (now - (wx?.fetched ?: 0L) > Weather.REFRESH_MS) refreshWx(false)
+        if (sec % 60 == 0L) renderWx() // roll tiles forward on the hour
         renderCall()
     }
     private fun renderCall() {
@@ -271,16 +271,27 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
 
     // ---------- weather ----------
     private fun refreshWx(force: Boolean) {
-        if (wxBusy) return; val w = wx; if (!force && w != null && System.currentTimeMillis() - w.fetched < Weather.REFRESH_MS) return
-        wxBusy = true; Weather.fetchAsync(this, prefs) { r -> wxBusy = false; if (r != null) wx = r else if (force) toast("Weather is offline"); renderWx() }
+        refreshWx(force, Weather.REFRESH_MS)
+    }
+    private var wxTried = 0L
+    /** 0.1.23: Home open/resume refreshes location + weather if the last try is older than [Weather.RESUME_MS]. */
+    private fun refreshWx(force: Boolean, maxAge: Long) {
+        if (wxBusy) return; val now = System.currentTimeMillis(); val w = wx
+        if (!force && now - wxTried < 60_000L) return
+        if (!force && w != null && w.hours.isNotEmpty() && Weather.locState == Weather.LOC_OK && now - w.fetched < maxAge) return
+        wxTried = now; wxBusy = true; renderWx()
+        Weather.fetchAsync(this, prefs) { r -> wxBusy = false; if (r != null) wx = r else if (force && Weather.locState == Weather.LOC_OK) toast("Weather is offline"); renderWx() }
     }
     private fun renderWx() {
-        if (!this::tWx.isInitialized) return; val w = wx
-        if (w == null) { tWxIcon.text = "\u2601"; tWx.text = pal.up(if (wxBusy) "weather…" else "weather offline"); return }
-        val (label, kind) = Logic.cond(w.code); val stale = System.currentTimeMillis() - w.fetched > 3 * Weather.REFRESH_MS
-        tWxIcon.text = when (kind) { "sun" -> if (w.day) "\u2600" else "\u263E"; "rain" -> "\u2614"; "snow" -> "\u2744"; "storm" -> "\u26A1"; "fog" -> "\u2248"; else -> "\u2601" }
-        tWx.text = pal.up("${w.temp}° $label · H ${w.hi}° L ${w.lo}° · ${w.place}${if (stale) " · offline" else ""}")
-        if (!prefs.reduce) ObjectAnimator.ofFloat(tWxIcon, "alpha", 1f, 0.55f, 1f).apply { duration = 3200; repeatCount = ValueAnimator.INFINITE; start() }
+        if (!this::wxTiles.isInitialized) return; val w = wx; val now = System.currentTimeMillis()
+        wxTiles.setPal(pal)
+        val loc = if (!prefs.wxGps) Weather.LOC_OK else if (Weather.permState(this) == Weather.LOC_OFF) Weather.LOC_OFF else Weather.locState
+        val status = when {
+            loc == Weather.LOC_OFF -> "Location off"
+            loc == Weather.LOC_NONE -> "Location not gathered"
+            w == null || w.upcoming(now).isEmpty() -> if (wxBusy) "Weather…" else "Weather offline"
+            else -> null }
+        wxTiles.show(if (status == null) w!!.upcoming(now) else emptyList(), status)
     }
 
     // ---------- per-frame ----------
@@ -373,7 +384,8 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         brain.onNote(n, fresh)
         if (!fresh || !PrimeApp.homeVisible || !prefs.bubbles) return
         if (stage.ready) { stage.noteT = stage.orb.t; if (!prefs.companion) { stage.orb.kick(); stage.orb.lookAt(0.0, -0.14) } }
-        if (shown.size >= 3) { queue.add(n); return }
+        val cap = noteSlots().size; if (cap == 0) return // no room between tiles and orb: counter + tray only
+        if (shown.size >= cap) { queue.add(n); return }
         showBubble(n)
     }
     override fun onNotesChanged() {
@@ -383,6 +395,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         if (tray != null) { if (c == 0) closeTray() else openTray() }
         shown.toList().forEach { (n, v) -> if (NotifStore.all().none { it.key == n.key }) dropBubble(v, n, 0f) }
     }
+    fun noteSlots(): List<Float> = Logic.noteSlots(if (stage.headerBottom > 0) stage.headerBottom else topIn + 210f, stage.cy - stage.orbR() * 1.12f)
     private fun showBubble(n: Note) {
         val ctx = this; val a = Apps.byPkg(n.pkg)
         val ic = ImageView(this).apply { setImageBitmap(tile(n.pkg, a?.label ?: n.pkg, 30f)) }
@@ -391,10 +404,12 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
         val inner = col(title, body).apply { setPadding(dpi(8f), 0, 0, 0) }
         val v = row(ic, inner).apply { background = pal.panel(ctx, 18f, 0xF0); setPadding(dpi(10f), dpi(8f), dpi(12f), dpi(8f)); elevation = dp(6f) }
         (inner.layoutParams as LinearLayout.LayoutParams).width = 0; (inner.layoutParams as LinearLayout.LayoutParams).weight = 1f
-        val idx = shown.size; val baseY = stage.cy - stage.orbR() - 22f - 64f * (idx + 1)
-        bubbles.addView(v, FrameLayout.LayoutParams(dpi(300f), WRAP, Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dpi(baseY.coerceAtLeast(topIn + 90f)) })
+        // 0.1.23: stack downward from under the weather tiles into the first free slot; never over the tiles or the orb.
+        val slots = noteSlots(); val used = shown.map { it.second.tag as? Int ?: -1 }.toSet(); val idx = slots.indices.firstOrNull { it !in used } ?: (slots.size - 1)
+        v.tag = idx; v.minimumHeight = 0
+        bubbles.addView(v, FrameLayout.LayoutParams(dpi(300f), dpi(Logic.NOTE_H), Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dpi(slots[idx]) })
         shown.add(n to v)
-        if (!prefs.reduce) { v.pivotX = dp(150f); v.pivotY = dp(60f); v.scaleX = 0.3f; v.scaleY = 0.3f; v.alpha = 0f; v.translationY = dp(64f * (idx + 1))
+        if (!prefs.reduce) { v.pivotX = dp(150f); v.pivotY = dp(60f); v.scaleX = 0.3f; v.scaleY = 0.3f; v.alpha = 0f; v.translationY = -dp(24f)
             v.animate().scaleX(1f).scaleY(1f).alpha(1f).translationY(0f).setInterpolator(OvershootInterpolator(1.6f)).setDuration(520).start() }
         var sx = 0f; var dragging = false
         v.setOnTouchListener { view, e ->
@@ -412,7 +427,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     }
     private fun dropBubble(v: View, n: Note, dir: Float, collapse: Boolean = false) {
         val i = shown.indexOfFirst { it.second === v }; if (i < 0) return; shown.removeAt(i)
-        val end = { bubbles.removeView(v); if (queue.isNotEmpty() && shown.size < 3) showBubble(queue.removeAt(0)) }
+        val end = { bubbles.removeView(v); if (queue.isNotEmpty() && shown.size < noteSlots().size) showBubble(queue.removeAt(0)) }
         if (prefs.reduce) end() else if (collapse) v.animate().scaleX(0.2f).scaleY(0.2f).alpha(0f).translationX(unread.x - v.x - v.width / 2f).translationY(unread.y - v.y).setDuration(380).withEndAction(end).start()
         else v.animate().translationX(dir * dp(400f)).alpha(0f).setDuration(240).withEndAction(end).start()
     }
@@ -479,7 +494,7 @@ class HomeActivity : androidx.activity.ComponentActivity(), StageView.Host, Noti
     @Deprecated("Activity result API not needed for this one-screen launcher") override fun onRequestPermissionsResult(rc: Int, perms: Array<String>, res: IntArray) {
         super.onRequestPermissionsResult(rc, perms, res)
         if (Manifest.permission.RECORD_AUDIO in perms) WakeService.sync(this)
-        if (Manifest.permission.ACCESS_COARSE_LOCATION in perms) refreshWx(true)
+        if (Manifest.permission.ACCESS_COARSE_LOCATION in perms) { Weather.locState = Weather.LOC_OK; refreshWx(true) }
         if (panelKind == "onboard") openOnboarding() else if (panelKind == "settings") openSettings()
     }
     fun has(p: String) = checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED

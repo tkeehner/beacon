@@ -31,7 +31,8 @@ class CompanionBrain(private val ctx: Context, private val prefs: Prefs, private
     fun schedCtx(): SchedCtx {
         val c = Calendar.getInstance(); val h = c.get(Calendar.HOUR_OF_DAY) + c.get(Calendar.MINUTE) / 60.0
         val dow = c.get(Calendar.DAY_OF_WEEK)
-        return SchedCtx(System.currentTimeMillis() / 60000, h, dayKey(c), dow == Calendar.SATURDAY || dow == Calendar.SUNDAY, busy(), stage.level < Rules.LOW_BATT && !stage.charging, raining())
+        val ms = System.currentTimeMillis()
+        return SchedCtx(ms / 60000, h, dayKey(c), dow == Calendar.SATURDAY || dow == Calendar.SUNDAY, busy(), stage.level < Rules.LOW_BATT && !stage.charging, raining(), ms / 1000)
     }
     /** 0.1.17: rain / drizzle / showers / storms in the cached forecast (<= 6 h old). Only gates ODST's Rain Watch. */
     private fun raining(): Boolean { val w = Wx.from(prefs.wxCache) ?: return false
@@ -157,6 +158,15 @@ class CompanionBrain(private val ctx: Context, private val prefs: Prefs, private
         if (!prefs.companion) return false; val c = schedCtx(); if (!Scheduler.canAct(st, c)) return false
         val last = st.last[id] ?: SchedState.NEVER; if (last != SchedState.NEVER && c.nowMin - last < 60) return false
         Scheduler.record(st, id, Kind.ACT, c); save(); return true
+    }
+    /** 0.1.22: maybe a chat bubble as this idle beat (~one every 2 min on home). True if one is now showing. */
+    override fun beatBubble(): Boolean {
+        if (!prefs.companion || !prefs.chat || stage.buddy.bubble != null || !PrimeApp.homeVisible) return false
+        val c = schedCtx(); val probe = SchedState.decode(st.encode())
+        val pick = Scheduler.beatBubble(probe, persona.pool, c, rnd.nextDouble(), rnd.nextDouble()) ?: return false
+        val cat = PoolIds.cat(pick.id) ?: return false
+        if (!show(cat)) return false
+        Scheduler.record(st, pick.id, Kind.BUB, c); save(); return true
     }
     override fun beatActs(): List<PoolItem> = if (!prefs.companion) emptyList() else Scheduler.beatActs(persona.pool, schedCtx())
     override fun onReact(kind: String) {
